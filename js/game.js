@@ -15,12 +15,12 @@ const BEND_MAX = CANVAS_W * 0.30;       // max horizontal road bend at the horiz
 
 const STEER_MOVE = 360;    // how fast the car slides across the road per steering unit
 
-const PLAYER_Y = CANVAS_H - 70;
-const PLAYER_W = 60;
-const PLAYER_H = 78;
+const PLAYER_Y = CANVAS_H - 66;
+const PLAYER_W = 156;      // wide, matches the rear-view car sprite (~2.1:1)
+const PLAYER_H = 74;
 
-const OBST_BASE_W = 58;
-const OBST_BASE_H = 76;
+const OBST_BASE_W = 148;
+const OBST_BASE_H = 70;
 
 const START_LIVES = 3;
 const INVULN_TIME = 1.6;   // seconds of flashing invulnerability after a hit
@@ -36,39 +36,56 @@ const DIFFICULTY = {
   hard:   { key: 'hard',   label: '어려움', startSpeed: 340, maxSpeed: 1150, accel: 14, spawnBase: 0.42, burst: 2 },
 };
 
-// Colors (kept local; CSS variables don't reach the canvas).
+// Colors — cyberpunk / synthwave neon palette (CSS variables don't reach canvas).
 const C = {
-  skyTop: '#0a0a1f',
-  skyMid: '#241a4a',
-  skyHorizon: '#5a3a6b',
-  sun: '#ff9d5c',
-  hill: '#1a1330',
-  grassLight: '#1a4d28',
-  grassDark: '#123d1e',
-  asphalt: '#3b3e48',
-  asphaltDark: '#31323a',
-  rumbleLight: '#eef0f4',
-  rumbleDark: '#c0392b',
-  edge: '#f2f2f2',
-  lane: '#f5d13b',    // yellow centre line
-  trunk: '#5b3a22',
-  foliage1: '#1f6b3a',
-  foliage2: '#16512e',
-  pole: '#8892a0',
-  lamp: '#ffd98a',
+  skyTop: '#07030f',
+  skyMid: '#1a0b33',
+  skyHorizon: '#3a1145',
+  sun: '#ff2e88',
+  hill: '#170a2b',
+  grassLight: '#1a1140',   // dark neon ground
+  grassDark: '#120a2c',
+  gridLine: 'rgba(120, 90, 255, 0.35)', // synthwave floor grid
+  asphalt: '#1c1c28',
+  asphaltDark: '#15151f',
+  rumbleLight: '#23e0ff',  // neon cyan rumble
+  rumbleDark: '#ff3ea5',   // neon magenta rumble
+  edge: '#8fefff',         // glowing cyan edge line
+  lane: '#ff6ad5',         // neon pink centre line
+  trunk: '#241833',
+  foliage1: '#2a1b4a',
+  foliage2: '#1d1236',
+  pole: '#4a4668',
+  lamp: '#23e0ff',
   player: '#2ec7ff',
   playerDark: '#0f6fa4',
-  tail: '#ff2b2b',    // glowing tail-lights
+  tail: '#ff2b2b',
 };
 
-// Varied obstacle car colours (assigned per obstacle at spawn).
+// Fallback obstacle car colours (used only if a sprite fails to load).
 const CAR_COLORS = [
-  { body: '#ff5a3c', dark: '#b8331e' },
-  { body: '#ffd23c', dark: '#c79a17' },
-  { body: '#6cff7a', dark: '#2fa843' },
-  { body: '#c05cff', dark: '#7a2fb8' },
-  { body: '#ff5ab0', dark: '#c02f7a' },
-  { body: '#eaf0ff', dark: '#9aa0ac' },
+  { body: '#ff3ea5', dark: '#b8256f' },
+  { body: '#ff9d3c', dark: '#c76a17' },
+];
+
+// ---- image assets (cyberpunk) — resolved relative to index.html -----------
+function loadImage(src) {
+  const img = new Image();
+  img.decoding = 'async';
+  img.__ok = false;
+  img.onload = () => { img.__ok = true; };
+  img.src = src;
+  return img;
+}
+const IMG_BG = loadImage('assets/bg-city.jpg');
+const CAR_SPRITES = {
+  cyan: loadImage('assets/car-cyan.png'),
+  magenta: loadImage('assets/car-magenta.png'),
+  orange: loadImage('assets/car-orange.png'),
+};
+const OBSTACLE_SPRITES = [
+  { key: 'magenta', glow: 'rgba(255, 62, 165, 0.65)' },
+  { key: 'orange', glow: 'rgba(255, 150, 40, 0.65)' },
 ];
 
 // project a world half-width at a given screen y (linear perspective)
@@ -278,10 +295,10 @@ export class RacingGame {
   }
 
   _spawnObstacle() {
-    // pick a lane offset -0.7..0.7 and a random car colour
+    // pick a lane offset -0.7..0.7 and a random neon car sprite
     const lane = (Math.random() * 1.4) - 0.7;
-    const color = CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)];
-    this.obstacles.push({ lane, y: HORIZON_Y + 2, hit: false, color });
+    const spr = OBSTACLE_SPRITES[Math.floor(Math.random() * OBSTACLE_SPRITES.length)];
+    this.obstacles.push({ lane, y: HORIZON_Y + 2, hit: false, sprite: spr.key, glow: spr.glow });
   }
 
   _checkCollisions() {
@@ -313,8 +330,8 @@ export class RacingGame {
 
   _obstacleRect(o) {
     const s = depthScale(o.y);
-    const w = OBST_BASE_W * (0.32 + s * 0.8);
-    const h = OBST_BASE_H * (0.32 + s * 0.8);
+    const w = OBST_BASE_W * (0.16 + s * 0.9);
+    const h = OBST_BASE_H * (0.16 + s * 0.9);
     const half = roadHalfAt(o.y);
     const cx = roadCenterX(o.y, this.curve) + o.lane * half;
     return { x: cx - w / 2, y: o.y - h / 2, w, h, cx, cy: o.y, s };
@@ -378,37 +395,38 @@ export class RacingGame {
   }
 
   _drawSky(ctx) {
-    // dusk gradient sky
-    const g = ctx.createLinearGradient(0, 0, 0, HORIZON_Y);
-    g.addColorStop(0, C.skyTop);
-    g.addColorStop(0.55, C.skyMid);
-    g.addColorStop(1, C.skyHorizon);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, CANVAS_W, HORIZON_Y);
+    if (IMG_BG.__ok) {
+      // Cyberpunk city photo backdrop: place so its glowing core sits at the horizon.
+      const aspect = IMG_BG.width / IMG_BG.height;
+      const bw = CANVAS_W;
+      const bh = bw / aspect;
+      const oy = HORIZON_Y - bh * 0.60;            // vanishing-point glow ≈ horizon
+      const px = -this.curve * 34;                 // subtle parallax with the road bend
+      ctx.drawImage(IMG_BG, px - 6, oy, bw + 12, bh);
+      // haze/darken the band just above the horizon so the road blends in
+      const hz = ctx.createLinearGradient(0, HORIZON_Y - 60, 0, HORIZON_Y);
+      hz.addColorStop(0, 'rgba(18, 10, 44, 0)');
+      hz.addColorStop(1, 'rgba(18, 10, 44, 0.85)');
+      ctx.fillStyle = hz;
+      ctx.fillRect(0, HORIZON_Y - 60, CANVAS_W, 60);
+    } else {
+      // Procedural fallback: neon dusk gradient + glow.
+      const g = ctx.createLinearGradient(0, 0, 0, HORIZON_Y);
+      g.addColorStop(0, C.skyTop);
+      g.addColorStop(0.55, C.skyMid);
+      g.addColorStop(1, C.skyHorizon);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, CANVAS_W, HORIZON_Y);
+      const sunX = CANVAS_W / 2 - this.curve * 70;
+      const rg = ctx.createRadialGradient(sunX, HORIZON_Y - 6, 4, sunX, HORIZON_Y - 6, 150);
+      rg.addColorStop(0, C.sun);
+      rg.addColorStop(0.3, 'rgba(255,46,136,0.4)');
+      rg.addColorStop(1, 'rgba(255,46,136,0)');
+      ctx.fillStyle = rg;
+      ctx.fillRect(0, 0, CANVAS_W, HORIZON_Y);
+    }
 
-    // low sun glow near the horizon (drifts slightly with the road curve)
-    const sunX = CANVAS_W / 2 - this.curve * 70;
-    const sunY = HORIZON_Y - 6;
-    const rg = ctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, 150);
-    rg.addColorStop(0, C.sun);
-    rg.addColorStop(0.28, 'rgba(255,150,90,0.45)');
-    rg.addColorStop(1, 'rgba(255,150,90,0)');
-    ctx.fillStyle = rg;
-    ctx.fillRect(0, 0, CANVAS_W, HORIZON_Y);
-
-    // distant hill silhouette
-    ctx.fillStyle = C.hill;
-    ctx.beginPath();
-    ctx.moveTo(0, HORIZON_Y);
-    ctx.lineTo(0, HORIZON_Y - 20);
-    ctx.quadraticCurveTo(CANVAS_W * 0.2, HORIZON_Y - 46, CANVAS_W * 0.4, HORIZON_Y - 22);
-    ctx.quadraticCurveTo(CANVAS_W * 0.58, HORIZON_Y - 50, CANVAS_W * 0.78, HORIZON_Y - 26);
-    ctx.quadraticCurveTo(CANVAS_W * 0.9, HORIZON_Y - 40, CANVAS_W, HORIZON_Y - 22);
-    ctx.lineTo(CANVAS_W, HORIZON_Y);
-    ctx.closePath();
-    ctx.fill();
-
-    // grass fills the rest as base
+    // dark neon ground base below the horizon
     ctx.fillStyle = C.grassDark;
     ctx.fillRect(0, HORIZON_Y, CANVAS_W, CANVAS_H - HORIZON_Y);
   }
@@ -530,8 +548,9 @@ export class RacingGame {
     const sorted = [...this.obstacles].sort((a, b) => a.y - b.y);
     for (const o of sorted) {
       const r = this._obstacleRect(o);
-      const col = o.color || CAR_COLORS[0];
-      this._drawCar(ctx, r.cx, r.cy, r.w, r.h, col.body, col.dark);
+      const img = CAR_SPRITES[o.sprite];
+      if (img && img.__ok) this._drawCarSprite(ctx, img, r.cx, r.cy, r.w, o.glow);
+      else { const col = CAR_COLORS[0]; this._drawCar(ctx, r.cx, r.cy, r.w, r.h, col.body, col.dark); }
     }
   }
 
@@ -539,7 +558,29 @@ export class RacingGame {
     // flash during invulnerability
     if (this.invuln > 0 && Math.floor(this.invuln * 12) % 2 === 0) return;
     const p = this._playerRect();
-    this._drawCar(ctx, p.cx, p.cy, p.w, p.h, C.player, C.playerDark);
+    const img = CAR_SPRITES.cyan;
+    if (img && img.__ok) this._drawCarSprite(ctx, img, p.cx, p.cy, p.w, 'rgba(35,224,255,0.6)');
+    else this._drawCar(ctx, p.cx, p.cy, p.w, p.h, C.player, C.playerDark);
+  }
+
+  // Draw a car sprite (transparent PNG) centred at (cx,cy) at the given width,
+  // with a neon ground-glow underneath. Falls back to _drawCar when not loaded.
+  _drawCarSprite(ctx, img, cx, cy, targetW, glow) {
+    const aspect = img.width / img.height;
+    const w = targetW;
+    const h = w / aspect;
+    if (glow) {
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = Math.max(6, w * 0.16);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + h * 0.14, w * 0.34, h * 0.16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.drawImage(img, cx - w / 2, cy - h * 0.6, w, h);
   }
 
   _drawCountdown(ctx) {
