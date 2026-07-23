@@ -1,0 +1,588 @@
+/* ============================================================
+   모션 레이싱 — 네온 아케이드 스타일
+   Colors + shared values are CSS custom properties in :root.
+   ============================================================ */
+
+:root {
+  --bg-0: #05060f;
+  --bg-1: #0b0e22;
+  --bg-2: #131735;
+  --panel: rgba(14, 18, 42, 0.86);
+  --panel-border: rgba(122, 92, 255, 0.35);
+
+  --neon-cyan: #23e0ff;
+  --neon-magenta: #ff3ea5;
+  --neon-purple: #7a5cff;
+  --neon-lime: #b6ff3c;
+  --neon-yellow: #ffd23c;
+
+  --text: #eaf0ff;
+  --text-dim: #94a0c8;
+  --danger: #ff4d6d;
+
+  --stage-w: 960px;
+  --stage-h: 540px;
+  --radius: 16px;
+  --radius-sm: 10px;
+
+  --glow-cyan: 0 0 12px rgba(35, 224, 255, 0.7), 0 0 28px rgba(35, 224, 255, 0.35);
+  --glow-magenta: 0 0 12px rgba(255, 62, 165, 0.7), 0 0 28px rgba(255, 62, 165, 0.35);
+  --font: "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(122, 92, 255, 0.25), transparent 60%),
+    radial-gradient(900px 500px at 50% 110%, rgba(255, 62, 165, 0.18), transparent 60%),
+    linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  background-attachment: fixed;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px;
+}
+
+/* ---------- App shell ---------- */
+.app {
+  width: auto;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.app__title {
+  margin: 0;
+  font-size: clamp(20px, 4.5vh, 30px);
+  font-weight: 800;
+  letter-spacing: 2px;
+  line-height: 1.1;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-magenta));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 18px rgba(122, 92, 255, 0.35);
+}
+
+.app__subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+.app__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ---------- Stage (relative wrapper) ---------- */
+.stage {
+  position: relative;
+  /* Fill as much of the viewport as possible while keeping the 16:9 landscape
+     ratio (wide, KartRider-style). Width wins on wide/desktop screens; height
+     wins on short landscape phones. ~96px reserved for the compact chrome. */
+  width: min(calc(100dvw - 16px), (100dvh - 96px) * 16 / 9);
+  height: auto;
+  max-height: calc(100dvh - 16px);
+  aspect-ratio: 16 / 9;
+  container-type: size;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  box-shadow:
+    0 0 0 1px rgba(35, 224, 255, 0.12),
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    inset 0 0 60px rgba(122, 92, 255, 0.12);
+  background: var(--bg-0);
+}
+
+.stage__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(180deg, #0a1030 0%, #12123a 45%, #1a0f2e 100%);
+}
+
+/* ---------- HUD overlay ---------- */
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hud__row--bottom { justify-content: flex-end; }
+
+/* Stacked score + speed in the top-left, clear of the steering wheel. */
+.hud__group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud__score,
+.hud__speed,
+.hud__lives {
+  background: rgba(5, 7, 18, 0.55);
+  border: 1px solid rgba(122, 92, 255, 0.35);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(4px);
+}
+
+.hud__score {
+  color: var(--neon-cyan);
+  text-shadow: var(--glow-cyan);
+}
+
+.hud__speed {
+  color: var(--neon-lime);
+  text-shadow: 0 0 10px rgba(182, 255, 60, 0.55);
+}
+
+.hud__lives {
+  color: var(--danger);
+  letter-spacing: 2px;
+  text-shadow: 0 0 12px rgba(255, 77, 109, 0.7);
+}
+
+/* ---------- Webcam preview (mirrored) ---------- */
+.cam {
+  position: absolute;
+  top: 5cqh;
+  right: 2cqw;
+  width: 15cqw;   /* ≈4:3 preview against the 16:9 stage */
+  height: 20cqh;
+  object-fit: cover;
+  transform: scaleX(-1); /* mirror so it feels like a mirror */
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(35, 224, 255, 0.5);
+  box-shadow: var(--glow-cyan);
+  background: #000;
+  opacity: 0.92;
+  pointer-events: none;
+}
+
+/* Hand-skeleton overlay sits exactly on top of the mirrored webcam preview. */
+.cam-overlay {
+  position: absolute;
+  top: 5cqh;
+  right: 2cqw;
+  width: 15cqw;
+  height: 20cqh;
+  transform: scaleX(-1); /* mirror to match .cam */
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ---------- Steering wheel indicator ---------- */
+.wheel {
+  position: absolute;
+  left: 2cqw;
+  bottom: 4cqh;
+  width: 22cqh;   /* square, sized off stage height */
+  height: 22cqh;
+  transform: rotate(0deg);
+  transition: transform 60ms linear;
+  pointer-events: none;
+  filter: drop-shadow(0 0 10px rgba(35, 224, 255, 0.45));
+}
+
+.wheel__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 7px solid var(--neon-cyan);
+  box-shadow:
+    inset 0 0 12px rgba(35, 224, 255, 0.6),
+    0 0 14px rgba(35, 224, 255, 0.5);
+}
+
+.wheel__spoke {
+  position: absolute;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 8px rgba(35, 224, 255, 0.7);
+  border-radius: 3px;
+}
+
+.wheel__spoke--h {
+  top: 50%;
+  left: 8px;
+  right: 8px;
+  height: 6px;
+  transform: translateY(-50%);
+}
+
+.wheel__spoke--v {
+  left: 50%;
+  top: 50%;
+  bottom: 8px;
+  width: 6px;
+  transform: translateX(-50%);
+}
+
+.wheel__hub {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--neon-magenta);
+  transform: translate(-50%, -50%);
+  box-shadow: var(--glow-magenta);
+}
+
+/* ---------- Status line ---------- */
+.status {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  max-width: 80%;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--neon-yellow);
+  text-shadow: 0 0 10px rgba(255, 210, 60, 0.5);
+  pointer-events: none;
+}
+
+.status.is-warn { color: var(--neon-magenta); text-shadow: var(--glow-magenta); }
+.status.is-error { color: var(--danger); text-shadow: 0 0 10px rgba(255, 77, 109, 0.6); }
+
+/* ---------- Overlay screens ---------- */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(600px 500px at 50% 40%, rgba(11, 14, 34, 0.72), rgba(5, 6, 15, 0.92));
+  backdrop-filter: blur(6px);
+  z-index: 5;
+}
+
+.screen[hidden] { display: none; }
+
+.screen__panel {
+  width: 100%;
+  max-width: 340px;
+  max-height: 100%;
+  overflow-y: auto;
+  text-align: center;
+  padding: 18px 22px 20px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), inset 0 0 40px rgba(122, 92, 255, 0.1);
+}
+
+.screen__title {
+  margin: 0 0 10px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.screen__title--over {
+  background: linear-gradient(90deg, var(--danger), var(--neon-magenta));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.screen__howto {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.screen__howto li {
+  position: relative;
+  padding-left: 20px;
+  line-height: 1.4;
+}
+
+.screen__howto li::before {
+  content: "›";
+  position: absolute;
+  left: 4px;
+  color: var(--neon-cyan);
+  font-weight: 800;
+}
+
+.screen__howto b { color: var(--text); }
+
+.screen__note {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: var(--neon-yellow);
+  opacity: 0.85;
+}
+
+.screen__tip {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(35, 224, 255, 0.08);
+  border: 1px solid rgba(35, 224, 255, 0.25);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  text-align: left;
+}
+
+.screen__tip b { color: var(--neon-cyan); }
+
+.screen__final {
+  margin: 0 0 20px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  text-shadow: var(--glow-cyan);
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  border-radius: 999px;
+  padding: 13px 34px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #06070f;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
+  box-shadow: 0 0 18px rgba(35, 224, 255, 0.5), 0 8px 20px rgba(0, 0, 0, 0.4);
+  transition: transform 0.08s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.btn--primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 0 26px rgba(35, 224, 255, 0.75), 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.btn--primary:active { transform: translateY(1px) scale(0.98); }
+
+/* Secondary / ghost button (practice mode, menu). */
+.btn--ghost {
+  background: transparent;
+  color: var(--neon-cyan);
+  border: 1px solid rgba(35, 224, 255, 0.5);
+  box-shadow: none;
+  padding: 10px 22px;
+  font-size: 13px;
+}
+
+.btn--ghost:hover {
+  background: rgba(35, 224, 255, 0.12);
+  filter: brightness(1.05);
+}
+
+.btn--ghost:active { transform: translateY(1px) scale(0.98); }
+
+/* Stacked buttons in the start panel. */
+.screen__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+/* In-game "menu" button lives inside the (pointer-events:none) HUD, so re-enable
+   pointer events just for it and push it to the right edge. */
+.hud__menu {
+  margin-left: auto;
+  pointer-events: auto;
+  padding: 5px 14px;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+/* ---------- Difficulty selector (start panel) ---------- */
+.difficulty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.difficulty__label {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.difficulty__opts {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(5, 7, 18, 0.6);
+  border: 1px solid var(--panel-border);
+}
+
+.difficulty__btn {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  border-radius: 999px;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  background: transparent;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.2s ease;
+}
+
+.difficulty__btn:hover { color: var(--text); }
+
+.difficulty__btn.is-selected {
+  color: #06070f;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
+  box-shadow: 0 0 14px rgba(35, 224, 255, 0.5);
+}
+
+/* ---------- Sensitivity slider (start panel) ---------- */
+.setting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.setting__label {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.setting__val {
+  color: var(--neon-cyan);
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(35, 224, 255, 0.5);
+}
+
+.setting__slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 220px;
+  max-width: 70vw;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
+  outline: none;
+  cursor: pointer;
+}
+
+.setting__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--neon-magenta);
+  box-shadow: var(--glow-magenta);
+  border: 2px solid #06070f;
+}
+
+.setting__slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--neon-magenta);
+  box-shadow: var(--glow-magenta);
+  border: 2px solid #06070f;
+}
+
+/* Hidden unless a phone is held in portrait (see media query below). */
+.rotate-hint { display: none; }
+
+/* ---------- Responsive ----------
+   .cam / .cam-overlay / .wheel size in container-query units, so they scale
+   with the stage automatically — no per-breakpoint px overrides needed. */
+
+/* Short screens (e.g. phone in landscape): drop the chrome text for more game. */
+@media (max-height: 520px) {
+  .app__subtitle,
+  .app__hint { display: none; }
+  .stage { width: min(calc(100dvw - 12px), (100dvh - 52px) * 16 / 9); }
+}
+
+/* Phone held in PORTRAIT: hide the game and ask the player to rotate. */
+@media (orientation: portrait) and (max-width: 900px) {
+  .app { display: none; }
+  .rotate-hint {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    text-align: center;
+    padding: 24px;
+    background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  }
+  .rotate-hint__icon {
+    font-size: 64px;
+    animation: rotate-nudge 1.8s ease-in-out infinite;
+  }
+  .rotate-hint__text {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.5px;
+  }
+}
+
+@keyframes rotate-nudge {
+  0%, 100% { transform: rotate(-12deg); }
+  50% { transform: rotate(78deg); }
+}

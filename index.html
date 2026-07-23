@@ -1,0 +1,111 @@
+<!doctype html>
+<!--
+  손 동작(웹캠)으로 조종하는 엔드리스 레이싱 게임.
+  주의: 웹캠(getUserMedia)은 보안 컨텍스트에서만 동작합니다.
+  반드시 https:// 또는 http://localhost 로 열어야 카메라 권한을 요청할 수 있습니다.
+  (파일을 file:// 로 직접 열면 카메라가 동작하지 않습니다.)
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>모션 레이싱 · Motion Racing</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <h1 class="app__title">모션 레이싱</h1>
+    <p class="app__subtitle">양손으로 핸들을 잡고 기울여 조종하세요</p>
+
+    <!-- .stage: relative wrapper; canvas + overlays stack here -->
+    <div class="stage" id="stage">
+      <canvas id="game-canvas" width="960" height="540" class="stage__canvas"></canvas>
+
+      <!-- HUD overlay -->
+      <div id="hud" class="hud">
+        <div class="hud__row hud__row--top">
+          <div class="hud__group">
+            <span id="hud-score" class="hud__score">거리: 0 m</span>
+            <span id="hud-speed" class="hud__speed">속도: 0 km/h</span>
+          </div>
+          <span id="hud-lives" class="hud__lives">❤❤❤</span>
+        </div>
+        <div class="hud__row hud__row--bottom">
+          <button id="menu-btn" class="btn btn--ghost hud__menu">⏸ 메뉴</button>
+        </div>
+      </div>
+
+      <!-- Mirrored webcam preview + hand-skeleton overlay (drawn by hand-tracking.js) -->
+      <video id="cam" class="cam" autoplay playsinline muted></video>
+      <canvas id="cam-overlay" class="cam-overlay" aria-hidden="true"></canvas>
+
+      <!-- Steering wheel indicator -->
+      <div id="wheel" class="wheel" aria-hidden="true">
+        <div class="wheel__ring"></div>
+        <div class="wheel__spoke wheel__spoke--h"></div>
+        <div class="wheel__spoke wheel__spoke--v"></div>
+        <div class="wheel__hub"></div>
+      </div>
+
+      <!-- Status line -->
+      <div id="status" class="status"></div>
+
+      <!-- Start screen -->
+      <div id="start-screen" class="screen screen--start">
+        <div class="screen__panel">
+          <h2 class="screen__title">모션 레이싱</h2>
+          <ul class="screen__howto">
+            <li>양손으로 보이지 않는 <b>핸들</b>을 잡으세요</li>
+            <li>핸들을 <b>기울이면</b> 자동차가 좌우로 움직여요</li>
+            <li>자동차는 <b>스스로 가속</b>합니다 — 장애물을 피하세요</li>
+            <li>생명은 <b>3개</b>, 오래 버틸수록 거리(점수)가 올라가요</li>
+          </ul>
+          <p class="screen__tip">💡 손이 잘 안 잡히면 <b>뒤로 앉아</b> 두 손이 화면에 다 들어오게 하고, 주먹은 <b>살짝 펴서</b> 밝은 곳에서 하세요</p>
+          <div class="difficulty" id="difficulty" role="group" aria-label="난이도 선택">
+            <span class="difficulty__label">난이도</span>
+            <div class="difficulty__opts">
+              <button class="difficulty__btn" data-diff="easy">쉬움</button>
+              <button class="difficulty__btn is-selected" data-diff="medium">중간</button>
+              <button class="difficulty__btn" data-diff="hard">어려움</button>
+            </div>
+          </div>
+
+          <div class="setting">
+            <label class="setting__label" for="sensitivity">
+              핸들 감도 <span id="sensitivity-val" class="setting__val">1.0×</span>
+            </label>
+            <input id="sensitivity" class="setting__slider" type="range"
+                   min="0.5" max="2" step="0.1" value="1"
+                   aria-label="핸들 감도" />
+          </div>
+          <p class="screen__note">웹캠 권한이 필요합니다 · localhost 또는 https 에서 실행하세요</p>
+          <div class="screen__actions">
+            <button id="start-btn" class="btn btn--primary">게임 시작</button>
+            <button id="practice-btn" class="btn btn--ghost">연습 모드 · 장애물 없음</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Game over screen -->
+      <div id="gameover-screen" class="screen screen--over" hidden>
+        <div class="screen__panel">
+          <h2 class="screen__title screen__title--over">게임 오버</h2>
+          <p id="final-score" class="screen__final">거리: 0 m</p>
+          <button id="restart-btn" class="btn btn--primary">다시 시작</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="app__hint">손이 감지되지 않으면 화면에 양손을 보여주세요</p>
+  </div>
+
+  <!-- Shown only on phones held in portrait: prompt to rotate to landscape. -->
+  <div class="rotate-hint" aria-hidden="true">
+    <div class="rotate-hint__icon">📱↻</div>
+    <p class="rotate-hint__text">가로로 눕혀서 플레이하세요</p>
+  </div>
+
+  <!-- Only the entry module is loaded; it imports the rest -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
