@@ -8,10 +8,10 @@
 const CANVAS_W = 960;
 const CANVAS_H = 540;
 
-const HORIZON_Y = CANVAS_H * 0.34;      // y of the vanishing point / far edge
-const ROAD_NEAR_HALF = CANVAS_W * 0.40; // half road width at the bottom (near)
-const ROAD_FAR_HALF = CANVAS_W * 0.018; // half road width at the horizon (far)
-const BEND_MAX = CANVAS_W * 0.32;       // max horizontal road bend at the horizon
+const HORIZON_Y = CANVAS_H * 0.30;      // vanishing point raised → longer road, more reaction time
+const ROAD_NEAR_HALF = CANVAS_W * 0.46; // half road width at the bottom (near) — wider road
+const ROAD_FAR_HALF = CANVAS_W * 0.06;  // half road width at the horizon — wider vanishing point
+const BEND_MAX = CANVAS_W * 0.30;       // max horizontal road bend at the horizon
 
 const STEER_MOVE = 360;    // how fast the car slides across the road per steering unit
 
@@ -262,10 +262,12 @@ export class RacingGame {
         for (let b = 0; b < this.diff.burst; b++) this._spawnObstacle();
       }
 
-      // advance obstacles toward the player (down the screen)
+      // advance obstacles toward the player (down the screen).
+      // Slower far away (near the vanishing point) so they emerge gradually and
+      // the player can react; accelerates only as they get close.
       const move = this.speed * dt;
       for (const o of this.obstacles) {
-        o.y += move * (0.6 + depthScale(o.y) * 1.4); // faster as it nears
+        o.y += move * (0.4 + depthScale(o.y) * 1.15);
       }
       this.obstacles = this.obstacles.filter((o) => o.y < CANVAS_H + 120);
 
@@ -311,8 +313,8 @@ export class RacingGame {
 
   _obstacleRect(o) {
     const s = depthScale(o.y);
-    const w = OBST_BASE_W * (0.25 + s * 0.85);
-    const h = OBST_BASE_H * (0.25 + s * 0.85);
+    const w = OBST_BASE_W * (0.32 + s * 0.8);
+    const h = OBST_BASE_H * (0.32 + s * 0.8);
     const half = roadHalfAt(o.y);
     const cx = roadCenterX(o.y, this.curve) + o.lane * half;
     return { x: cx - w / 2, y: o.y - h / 2, w, h, cx, cy: o.y, s };
