@@ -45,18 +45,12 @@ const C = {
   hill: '#170a2b',
   grassLight: '#1a1140',   // dark neon ground
   grassDark: '#120a2c',
-  gridLine: 'rgba(120, 90, 255, 0.35)', // synthwave floor grid
   asphalt: '#1c1c28',
   asphaltDark: '#15151f',
   rumbleLight: '#23e0ff',  // neon cyan rumble
   rumbleDark: '#ff3ea5',   // neon magenta rumble
   edge: '#8fefff',         // glowing cyan edge line
   lane: '#ff6ad5',         // neon pink centre line
-  trunk: '#241833',
-  foliage1: '#2a1b4a',
-  foliage2: '#1d1236',
-  pole: '#4a4668',
-  lamp: '#23e0ff',
   player: '#2ec7ff',
   playerDark: '#0f6fa4',
   tail: '#ff2b2b',
@@ -139,7 +133,8 @@ export class RacingGame {
 
     this.playerX = 0;              // -1..1 across the road (0 = center)
     this.roadOffset = 0;          // accumulated scroll for stripes
-    this.curve = 0;                // smoothed road bend from steering
+    this.curve = 0;                // current road bend (autonomous, not steering)
+    this.roadPhase = 0;            // phase driving the autonomous winding curve
 
     this.obstacles = [];           // { lane:-1..1, y, hit, color }
     this.spawnTimer = 0;
@@ -201,8 +196,7 @@ export class RacingGame {
         this.tracker.calibrate();
       }
       // The car stays put during the get-ready countdown (and thus while paused):
-      // turning the wheel must NOT move the car yet. Only ease the road straight.
-      this.curve += (0 - this.curve) * Math.min(1, dt * 4);
+      // turning the wheel must NOT move the car. The road holds its current bend.
       this._updateHud();
       return;
     }
@@ -240,9 +234,13 @@ export class RacingGame {
     this.playerX += steering * STEER_MOVE * dt / ROAD_NEAR_HALF;
     this.playerX = clamp(this.playerX, -0.92, 0.92);
 
-    // road visually bends toward the steer direction (smoothed)
-    const targetCurve = steering;
-    this.curve += (targetCurve - this.curve) * Math.min(1, dt * 4);
+    // The road winds on its OWN — independent of steering (steering only moves the
+    // car). Two combined sines give a gentle, non-repetitive, moderate bend that
+    // conveys forward travel. Eased so transitions stay smooth.
+    this.roadPhase += (0.12 + this.speed * 0.0007) * dt;   // gentle, mildly speed-scaled
+    const targetCurve =
+      0.34 * Math.sin(this.roadPhase) + 0.12 * Math.sin(this.roadPhase * 0.53 + 2.0);
+    this.curve += (targetCurve - this.curve) * Math.min(1, dt * 2.5);
 
     // scroll stripes based on speed
     this.roadOffset = (this.roadOffset + this.speed * dt) % 80;
@@ -250,20 +248,15 @@ export class RacingGame {
     // invulnerability countdown
     if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt);
 
-    // Roadside scenery (both modes) — rushes past for a sense of speed.
+    // Roadside cyberpunk structures (both modes) — rush past for a sense of speed
+    // and bridge the flat road up to the distant city skyline.
     const smove = this.speed * dt;
-    for (const o of this.scenery) o.y += smove * (0.6 + depthScale(o.y) * 1.4);
-    this.scenery = this.scenery.filter((o) => o.y < CANVAS_H + 160);
+    for (const o of this.scenery) o.y += smove * (0.55 + depthScale(o.y) * 1.25);
+    this.scenery = this.scenery.filter((o) => o.y < CANVAS_H + 220);
     this.scenTimer -= dt;
     if (this.scenTimer <= 0) {
-      this.scenTimer = 0.5;
-      const side = Math.random() < 0.5 ? -1 : 1;
-      this.scenery.push({
-        side,
-        lane: side * (1.25 + Math.random() * 0.35),
-        y: HORIZON_Y + 2,
-        type: Math.random() < 0.7 ? 0 : 1 // 0 = tree, 1 = lamp post
-      });
+      this.scenTimer = 0.13;   // dense roadside city wall
+      this._spawnStructure(Math.random() < 0.5 ? -1 : 1);
     }
 
     // Obstacles + collisions are skipped entirely in practice mode.
@@ -299,6 +292,23 @@ export class RacingGame {
     const lane = (Math.random() * 1.4) - 0.7;
     const spr = OBSTACLE_SPRITES[Math.floor(Math.random() * OBSTACLE_SPRITES.length)];
     this.obstacles.push({ lane, y: HORIZON_Y + 2, hit: false, sprite: spr.key, glow: spr.glow });
+  }
+
+  _spawnStructure(side) {
+    const NEON = ['#23e0ff', '#ff3ea5', '#b06bff', '#ff6ad5', '#3affd0'];
+    const neon = NEON[Math.floor(Math.random() * NEON.length)];
+    const r = Math.random();
+    let type, width, height;
+    if (r < 0.55) { type = 0; width = 54 + Math.random() * 40; height = 260 + Math.random() * 220; }      // tall tower
+    else if (r < 0.85) { type = 0; width = 96 + Math.random() * 54; height = 150 + Math.random() * 90; }  // wide block
+    else { type = 1; width = 12; height = 170 + Math.random() * 150; }                                    // holo pillar/sign
+    this.scenery.push({
+      side,
+      lane: side * (1.1 + Math.random() * 0.7),   // hug the road edge → city canyon
+      y: HORIZON_Y + 2,
+      type, width, height, neon,
+      seed: Math.floor(Math.random() * 1000)
+    });
   }
 
   _checkCollisions() {
@@ -371,6 +381,7 @@ export class RacingGame {
     const ctx = this.ctx;
     this._drawSky(ctx);
     this._drawRoad(ctx);
+    this._drawHorizonGlow(ctx);
     this._drawScenery(ctx);
     this._drawObstacles(ctx);
     this._drawPlayer(ctx);
@@ -403,12 +414,12 @@ export class RacingGame {
       const oy = HORIZON_Y - bh * 0.60;            // vanishing-point glow ≈ horizon
       const px = -this.curve * 34;                 // subtle parallax with the road bend
       ctx.drawImage(IMG_BG, px - 6, oy, bw + 12, bh);
-      // haze/darken the band just above the horizon so the road blends in
-      const hz = ctx.createLinearGradient(0, HORIZON_Y - 60, 0, HORIZON_Y);
-      hz.addColorStop(0, 'rgba(18, 10, 44, 0)');
-      hz.addColorStop(1, 'rgba(18, 10, 44, 0.85)');
+      // soft purple haze fading the city base toward the horizon (blend, not a hard cut)
+      const hz = ctx.createLinearGradient(0, HORIZON_Y - 72, 0, HORIZON_Y);
+      hz.addColorStop(0, 'rgba(20, 11, 44, 0)');
+      hz.addColorStop(1, 'rgba(20, 11, 44, 0.5)');
       ctx.fillStyle = hz;
-      ctx.fillRect(0, HORIZON_Y - 60, CANVAS_W, 60);
+      ctx.fillRect(0, HORIZON_Y - 72, CANVAS_W, 72);
     } else {
       // Procedural fallback: neon dusk gradient + glow.
       const g = ctx.createLinearGradient(0, 0, 0, HORIZON_Y);
@@ -429,6 +440,28 @@ export class RacingGame {
     // dark neon ground base below the horizon
     ctx.fillStyle = C.grassDark;
     ctx.fillRect(0, HORIZON_Y, CANVAS_W, CANVAS_H - HORIZON_Y);
+  }
+
+  // Additive neon haze where the road meets the city — blends the photographic
+  // backdrop into the procedural road so they read as one scene.
+  _drawHorizonGlow(ctx) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const gy0 = HORIZON_Y - 18, gy1 = HORIZON_Y + 74;
+    const g = ctx.createLinearGradient(0, gy0, 0, gy1);
+    g.addColorStop(0, 'rgba(120, 60, 200, 0.32)');
+    g.addColorStop(0.25, 'rgba(255, 62, 165, 0.2)');
+    g.addColorStop(1, 'rgba(35, 224, 255, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, gy0, CANVAS_W, gy1 - gy0);
+    // brighter bloom right at the vanishing point
+    const vx = roadCenterX(HORIZON_Y + 4, this.curve);
+    const rg = ctx.createRadialGradient(vx, HORIZON_Y, 2, vx, HORIZON_Y, 130);
+    rg.addColorStop(0, 'rgba(255, 130, 225, 0.32)');
+    rg.addColorStop(1, 'rgba(255, 130, 225, 0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, HORIZON_Y - 64, CANVAS_W, 128);
+    ctx.restore();
   }
 
   _drawRoad(ctx) {
@@ -482,53 +515,73 @@ export class RacingGame {
       const s = depthScale(o.y);
       if (s <= 0.02) continue;
       const half = roadHalfAt(o.y);
-      const cx = roadCenterX(o.y, this.curve) + o.lane * half;
-      if (o.type === 0) this._drawTree(ctx, cx, o.y, s);
-      else this._drawPole(ctx, cx, o.y, s);
+      const baseX = roadCenterX(o.y, this.curve) + o.lane * half;
+      if (o.type === 1) this._drawHolo(ctx, baseX, o.y, s, o);
+      else this._drawBuilding(ctx, baseX, o.y, s, o);
     }
   }
 
-  _drawTree(ctx, cx, baseY, s) {
-    const h = 130 * s;
-    const w = 48 * s;
-    // shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    ctx.beginPath();
-    ctx.ellipse(cx, baseY, w * 0.5, h * 0.05, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // trunk
-    ctx.fillStyle = C.trunk;
-    ctx.fillRect(cx - w * 0.08, baseY - h * 0.34, w * 0.16, h * 0.34);
-    // foliage (layered blobs)
-    ctx.fillStyle = C.foliage2;
-    ctx.beginPath();
-    ctx.arc(cx, baseY - h * 0.52, w * 0.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = C.foliage1;
-    ctx.beginPath();
-    ctx.arc(cx - w * 0.2, baseY - h * 0.64, w * 0.4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(cx + w * 0.22, baseY - h * 0.6, w * 0.38, 0, Math.PI * 2);
-    ctx.fill();
+  _drawBuilding(ctx, baseX, baseY, s, o) {
+    const bw = o.width * s;
+    const bh = o.height * s;
+    const x = baseX - bw / 2;
+    const top = baseY - bh;
+
+    // dark silhouette body with a faint vertical gradient
+    const g = ctx.createLinearGradient(0, top, 0, baseY);
+    g.addColorStop(0, '#170f30');
+    g.addColorStop(1, '#0a0718');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, top, bw, bh);
+
+    // neon edge outline
+    ctx.strokeStyle = o.neon;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = Math.max(1, 1.5 * s);
+    ctx.strokeRect(x + 0.5, top + 0.5, bw - 1, bh - 1);
+    ctx.globalAlpha = 1;
+
+    // lit windows — a seeded grid, only when close enough to read
+    if (s > 0.28) {
+      const cols = Math.min(7, Math.max(2, Math.floor(bw / 9)));
+      const rows = Math.min(13, Math.max(3, Math.floor(bh / 12)));
+      const cw = bw / cols, rh = bh / rows;
+      ctx.fillStyle = o.neon;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (((r * 7 + c * 3 + o.seed) % 5) < 2) {
+            ctx.globalAlpha = 0.35 + 0.45 * (((r + c + o.seed) % 3) / 2);
+            ctx.fillRect(x + c * cw + cw * 0.28, top + r * rh + rh * 0.28, cw * 0.44, rh * 0.44);
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // glowing rooftop crown strip
+    ctx.save();
+    ctx.shadowColor = o.neon;
+    ctx.shadowBlur = 8 * s;
+    ctx.fillStyle = o.neon;
+    ctx.fillRect(x, top, bw, Math.max(1, 2.2 * s));
+    ctx.restore();
   }
 
-  _drawPole(ctx, cx, baseY, s) {
-    const h = 140 * s;
-    const w = Math.max(1.5, 11 * s);
-    ctx.fillStyle = C.pole;
-    ctx.fillRect(cx - w * 0.5, baseY - h, w, h);
-    // lamp arm reaching toward the road
-    const arm = -Math.sign(cx - CANVAS_W / 2) || 1;
-    ctx.fillRect(cx, baseY - h, arm * w * 2.4, w * 0.7);
-    // glowing lamp head
+  _drawHolo(ctx, baseX, baseY, s, o) {
+    const h = o.height * s;
+    const w = Math.max(1.5, o.width * s);
+    // pole
+    ctx.fillStyle = '#221c38';
+    ctx.fillRect(baseX - w * 0.5, baseY - h, w, h);
+    // glowing holographic sign panel near the top
     ctx.save();
-    ctx.shadowColor = 'rgba(255,210,120,0.85)';
-    ctx.shadowBlur = 10 * s;
-    ctx.fillStyle = C.lamp;
-    ctx.beginPath();
-    ctx.arc(cx + arm * w * 2.2, baseY - h + w * 0.5, w * 0.85, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.shadowColor = o.neon;
+    ctx.shadowBlur = 12 * s;
+    ctx.fillStyle = o.neon;
+    ctx.globalAlpha = 0.8;
+    const arm = -Math.sign(baseX - CANVAS_W / 2) || 1;
+    const pw = w * 5, ph = h * 0.32;
+    ctx.fillRect(baseX + (arm < 0 ? -pw : 0) + arm * w, baseY - h, pw, ph);
     ctx.restore();
   }
 
