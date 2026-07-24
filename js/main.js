@@ -127,9 +127,10 @@ function uiLoop() {
   requestAnimationFrame(uiLoop);
   if (!tracker) return;
 
-  // Rotate the on-screen steering-wheel indicator so it turns the SAME direction
-  // the user rolls their hands (negate: tiltDeg is in mirrored-image space).
-  if (wheel) wheel.style.transform = 'rotate(' + (-tracker.tiltDeg).toFixed(1) + 'deg)';
+  // Rotate the cockpit steering wheel so it turns the SAME direction the user
+  // rolls their hands (negate: tiltDeg is in mirrored-image space). Keep the
+  // bottom-centre positioning transform intact.
+  if (wheel) wheel.style.transform = 'translateX(-50%) rotate(' + (-tracker.tiltDeg).toFixed(1) + 'deg)';
 
   // Only nag about hands while a game is actually running.
   const playing = game && game.running;
