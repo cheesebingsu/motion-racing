@@ -238,6 +238,38 @@ body {
 .status.is-warn { color: var(--neon-magenta); text-shadow: var(--glow-magenta); }
 .status.is-error { color: var(--danger); text-shadow: 0 0 10px rgba(255, 77, 109, 0.6); }
 
+/* ---------- 3D overlays (countdown / pause over the WebGL canvas) ---------- */
+.cd3d {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%);
+  font-size: 24cqh;
+  font-weight: 800;
+  color: #ffb46e;
+  text-shadow: 0 0 4cqh rgba(255, 120, 60, 0.85);
+  pointer-events: none;
+  z-index: 4;
+}
+.cd3d[hidden] { display: none; }
+
+.pause3d {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.6cqh;
+  text-align: center;
+  background: rgba(3, 5, 12, 0.5);
+  z-index: 4;
+  pointer-events: none;
+}
+.pause3d[hidden] { display: none; }
+.pause3d__title { font-size: 9cqh; font-weight: 800; color: #ffd23c; }
+.pause3d__sub { font-size: 4cqh; font-weight: 700; color: #eaf0ff; }
+
 /* ---------- Overlay screens ---------- */
 .screen {
   position: absolute;

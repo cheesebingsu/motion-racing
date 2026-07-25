@@ -8,7 +8,7 @@
 // it at http://localhost:PORT/ .
 
 import { createHandTracker } from './hand-tracking.js';
-import { RacingGame } from './game.js';
+import { RacingGame3D as RacingGame } from './game3d.js';
 
 // ---- DOM handles ----------------------------------------------------------
 const cam = document.getElementById('cam');

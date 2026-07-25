@@ -11,6 +11,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>모션 레이싱 · Motion Racing</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- Three.js (real 3D) — import map so game3d.js can `import 'three'` -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
   <div class="app">
@@ -41,6 +50,13 @@
 
       <!-- Cockpit steering wheel (real supercar wheel image; only the top shows) -->
       <img id="wheel" class="wheel" src="assets/wheel.png" alt="" aria-hidden="true" />
+
+      <!-- 3D overlays (countdown / pause) drawn as DOM over the WebGL canvas -->
+      <div id="countdown3d" class="cd3d" hidden></div>
+      <div id="pause3d" class="pause3d" hidden>
+        <div class="pause3d__title">⏸ 일시정지</div>
+        <div class="pause3d__sub">양손을 화면에 보여주면 이어서 시작해요</div>
+      </div>
 
       <!-- Status line -->
       <div id="status" class="status"></div>
