@@ -14,11 +14,15 @@ const ROAD_NEAR_HALF = CANVAS_W * 0.62; // very wide near — road fills the scr
 const ROAD_FAR_HALF = CANVAS_W * 0.055; // vanishing-point half width
 const BEND_MAX = CANVAS_W * 0.26;       // max autonomous road bend at the horizon
 
-const STEER_MOVE = 560;    // lateral car speed per steering unit
+const MAX_VX = 640;        // top lateral speed (units/sec) at full steer
+const STEER_INERTIA = 5;   // how fast lateral velocity eases to target (lower = more momentum/drift)
+const ROLL_RATE = 6;       // how fast the car's banking eases
+const ROLL_MAX_RAD = 0.15; // max banking roll (radians ~8.6°)
+const TURN_SPRITE_AT = 0.28; // |roll| beyond this swaps to the cornering sprite
 const PLAYER_MAX_X = 1.08; // how far past the road edge the car can slide
 
-const PLAYER_Y = CANVAS_H - 42;  // car sits low/close to the camera
-const PLAYER_NEAR_W = 196;       // on-screen width of the player car
+const PLAYER_Y = CANVAS_H - 120; // car sits in the lower third — room for the cockpit wheel below
+const PLAYER_NEAR_W = 188;       // on-screen width of the player car
 
 const START_LIVES = 3;
 const INVULN_TIME = 1.6;
@@ -41,6 +45,7 @@ function loadImage(src) {
 }
 const IMG = {
   player: loadImage('assets/car-player.png'),
+  playerTurn: loadImage('assets/car-player-turn.png'), // 3/4 cornering pose (flipped for the other side)
   muscle: loadImage('assets/car-muscle.png'),
   suv: loadImage('assets/car-suv.png'),
   taxi: loadImage('assets/car-taxi.png'),
@@ -117,6 +122,10 @@ export class RacingGame {
     this.lives = START_LIVES;
 
     this.playerX = 0;
+    this.playerVX = 0;        // lateral velocity (momentum)
+    this.playerRoll = 0;      // banking / turn amount, -1..1
+    this.bobPhase = 0;        // suspension bob phase
+    this.bob = 0;             // current vertical bob offset (px)
     this.roadOffset = 0;
     this.curve = 0;
     this.roadPhase = 0;
@@ -201,9 +210,21 @@ export class RacingGame {
     this.speed = Math.min(this.diff.maxSpeed, this.speed + this.diff.accel * dt);
     this.distance += this.speed * dt * 0.05;
 
-    // steering moves ONLY the car
-    this.playerX += steering * STEER_MOVE * dt / ROAD_NEAR_HALF;
-    this.playerX = clamp(this.playerX, -PLAYER_MAX_X, PLAYER_MAX_X);
+    // steering moves ONLY the car — with momentum/inertia so it accelerates and
+    // drifts rather than snapping (kills the "PPT slide on one line" feel).
+    const targetVX = steering * MAX_VX;
+    this.playerVX += (targetVX - this.playerVX) * Math.min(1, dt * STEER_INERTIA);
+    this.playerX += this.playerVX * dt / ROAD_NEAR_HALF;
+    if (this.playerX > PLAYER_MAX_X) { this.playerX = PLAYER_MAX_X; this.playerVX *= -0.2; }
+    if (this.playerX < -PLAYER_MAX_X) { this.playerX = -PLAYER_MAX_X; this.playerVX *= -0.2; }
+
+    // banking: the car leans/rolls into the turn (based on lateral velocity)
+    const rollTarget = clamp(this.playerVX / MAX_VX, -1, 1);
+    this.playerRoll += (rollTarget - this.playerRoll) * Math.min(1, dt * ROLL_RATE);
+
+    // suspension bob — subtle vertical bounce that grows with speed
+    this.bobPhase += dt * (7 + this.speed * 0.012);
+    this.bob = Math.sin(this.bobPhase) * (0.5 + this.speed * 0.0035);
 
     // road winds on its own (gentle, independent of steering) for a sense of travel
     this.roadPhase += (0.12 + this.speed * 0.0007) * dt;
@@ -417,15 +438,22 @@ export class RacingGame {
       if (s <= 0.015) continue;
       const img = IMG.bld[o.idx];
       if (!img.__ok) continue;
-      const aspect = img.width / img.height;
       const h = o.nearH * s;
-      const w = h * aspect;
+      const w = h * (img.width / img.height);
       const half = roadHalfAt(o.y);
       const baseX = roadCenterX(o.y, this.curve) + o.lane * half;
-      // atmospheric fade — far buildings blend into the night
-      ctx.globalAlpha = Math.min(1, 0.32 + s * 0.95);
-      ctx.drawImage(img, baseX - w / 2, o.y - h, w, h);
-      ctx.globalAlpha = 1;
+
+      // 2.5D depth: shear the tower so it leans toward the vanishing point, and
+      // mirror it so its side face turns toward the road (real 3D-ish volume).
+      const dir = (baseX - CANVAS_W / 2) / (CANVAS_W / 2);
+      const skew = dir * 0.09;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, 0.3 + s * 0.95); // atmospheric fade with distance
+      ctx.translate(baseX, o.y);
+      ctx.transform(1, 0, skew, 1, 0, 0);
+      if (o.side > 0) ctx.scale(-1, 1);
+      ctx.drawImage(img, -w / 2, -h, w, h);
+      ctx.restore();
     }
   }
 
@@ -444,11 +472,23 @@ export class RacingGame {
     if (this.invuln > 0 && Math.floor(this.invuln * 12) % 2 === 0) return;
     const half = roadHalfAt(PLAYER_Y);
     const cx = roadCenterX(PLAYER_Y, this.curve) + this.playerX * half;
-    this._drawSprite(ctx, IMG.player, cx, PLAYER_Y, PLAYER_NEAR_W);
+    const groundY = PLAYER_Y + this.bob;
+    const roll = clamp(this.playerRoll, -1, 1);
+
+    // Swap to the 3/4 cornering sprite when turning enough (car visibly turns);
+    // the same sprite is mirrored for the opposite direction.
+    let img = IMG.player, flip = false;
+    if (IMG.playerTurn && IMG.playerTurn.__ok) {
+      if (roll > TURN_SPRITE_AT) { img = IMG.playerTurn; flip = true; }
+      else if (roll < -TURN_SPRITE_AT) { img = IMG.playerTurn; flip = false; }
+    }
+    this._drawSprite(ctx, img, cx, groundY, PLAYER_NEAR_W, { roll: roll * ROLL_MAX_RAD, flip });
   }
 
   // Draw a transparent sprite bottom-anchored on the ground at (cx, groundY).
-  _drawSprite(ctx, img, cx, groundY, drawW) {
+  // opts: { roll (radians, banking), flip (mirror horizontally) }.
+  _drawSprite(ctx, img, cx, groundY, drawW, opts) {
+    opts = opts || {};
     if (!img || !img.__ok) {
       ctx.fillStyle = 'rgba(40,42,52,0.9)';
       roundRect(ctx, cx - drawW / 2, groundY - drawW * 0.5, drawW, drawW * 0.5, 6);
@@ -457,12 +497,23 @@ export class RacingGame {
     }
     const w = drawW;
     const h = w / (img.width / img.height);
-    // soft ground shadow / wet contact
+    // soft ground shadow / wet contact (stays flat, not rotated)
     ctx.fillStyle = 'rgba(0,0,0,0.42)';
     ctx.beginPath();
     ctx.ellipse(cx, groundY - 2, w * 0.4, h * 0.07, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.drawImage(img, cx - w / 2, groundY - h, w, h);
+
+    const roll = opts.roll || 0;
+    if (roll || opts.flip) {
+      ctx.save();
+      ctx.translate(cx, groundY);
+      if (roll) ctx.rotate(roll);
+      ctx.scale(opts.flip ? -1 : 1, 1);
+      ctx.drawImage(img, -w / 2, -h, w, h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, cx - w / 2, groundY - h, w, h);
+    }
   }
 
   _drawVignette(ctx) {

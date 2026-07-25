@@ -13,6 +13,16 @@ import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@m
 const FULL_LOCK_DEG = 32;   // ~30-35 deg of wheel tilt == full lock (steering ±1)
 const LERP = 0.3;           // smoothing factor toward the target steering each frame
 const GRACE_MS = 250;       // hold the last steering this long when a hand briefly drops
+const DEADZONE_DEG = 2.5;   // tilt smaller than this reads as straight (kills micro-jitter)
+
+// Palm centre: average of the wrist + the four finger-base (MCP) landmarks.
+// Far steadier than a single wrist point, so the wheel angle jitters much less.
+const PALM_IDX = [0, 5, 9, 13, 17];
+function palmCenter(hand) {
+  let x = 0, y = 0;
+  for (const i of PALM_IDX) { x += hand[i].x; y += hand[i].y; }
+  return { x: x / PALM_IDX.length, y: y / PALM_IDX.length };
+}
 
 // Hand skeleton topology (21 landmarks) for drawing the overlay.
 const HAND_CONNECTIONS = [
@@ -186,11 +196,12 @@ export async function createHandTracker(videoEl, overlayCanvas) {
     drawHands(hands);
 
     if (hands.length >= 2) {
-      // Wrist landmark is index 0 of each hand.
-      const w0 = hands[0][0];
-      const w1 = hands[1][0];
+      // Steady palm centres (average of wrist + finger bases) — far less jitter
+      // than the single wrist landmark used before.
+      const w0 = palmCenter(hands[0]);
+      const w1 = palmCenter(hands[1]);
 
-      // Order the two wrists left->right in *image* coordinates so the sign of
+      // Order the two palms left->right in *image* coordinates so the sign of
       // the angle is stable regardless of which hand MediaPipe reported first.
       let left = w0;
       let right = w1;
@@ -229,10 +240,16 @@ export async function createHandTracker(videoEl, overlayCanvas) {
       tracker.tiltDeg = rel;
       tracker.detected = true;
 
+      // Soft deadzone near the neutral pose so holding roughly straight doesn't
+      // wobble the car (the wheel UI still shows the true tilt via tracker.tiltDeg).
+      let relDz = rel;
+      if (Math.abs(rel) < DEADZONE_DEG) relDz = 0;
+      else relDz = rel - Math.sign(rel) * DEADZONE_DEG;
+
       // Map tilt to steering. Sign is negated so the car turns the SAME way the
       // user rolls the wheel from their own point of view (fixes reversed steering).
       // The sensitivity multiplier scales how much steering each degree produces.
-      let target = (-rel / FULL_LOCK_DEG) * sensitivity;
+      let target = (-relDz / FULL_LOCK_DEG) * sensitivity;
       if (target > 1) target = 1;
       if (target < -1) target = -1;
 
