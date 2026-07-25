@@ -27,6 +27,7 @@ const PLAYER_NEAR_W = 188;       // on-screen width of the player car
 const START_LIVES = 3;
 const INVULN_TIME = 1.6;
 const NO_HANDS_GRACE = 0.4;
+const RAIN_COUNT = 90;     // atmospheric rain streaks
 
 const DIFFICULTY = {
   easy:   { key: 'easy',   label: '쉬움',   startSpeed: 150, maxSpeed: 520,  accel: 5,  spawnBase: 1.25, burst: 1 },
@@ -142,6 +143,20 @@ export class RacingGame {
     this.countdown = 0;
     this.paused = false;
     this.noHandsTimer = 0;
+
+    // juice: screen shake, hit flash, sparks, rain
+    this.shake = 0;
+    this.flash = 0;
+    this.sparks = [];
+    this.rain = [];
+    for (let i = 0; i < RAIN_COUNT; i++) {
+      this.rain.push({
+        x: Math.random() * CANVAS_W,
+        y: Math.random() * CANVAS_H,
+        len: 8 + Math.random() * 16,
+        spd: 750 + Math.random() * 550,
+      });
+    }
 
     this._lastScoreStr = '';
     this._lastLivesStr = '';
@@ -263,7 +278,37 @@ export class RacingGame {
       this._checkCollisions();
     }
 
+    // ---- juice: rain, screen-shake/flash decay, spark particles ----
+    for (const d of this.rain) {
+      d.y += d.spd * dt;
+      d.x -= this.speed * dt * 0.14;               // motion slant
+      if (d.y > CANVAS_H) { d.y = -d.len; d.x = Math.random() * CANVAS_W * 1.2; }
+      if (d.x < -20) d.x = CANVAS_W + Math.random() * 40;
+    }
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.4);
+    if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 1.9);
+    if (this.sparks.length) {
+      for (const p of this.sparks) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 900 * dt; p.life -= dt; }
+      this.sparks = this.sparks.filter((p) => p.life > 0);
+    }
+
     this._updateHud();
+  }
+
+  _spawnSparks() {
+    const half = roadHalfAt(PLAYER_Y);
+    const cx = roadCenterX(PLAYER_Y, this.curve) + this.playerX * half;
+    const cy = PLAYER_Y - 34;
+    for (let i = 0; i < 20; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 120 + Math.random() * 280;
+      this.sparks.push({
+        x: cx, y: cy,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 130,
+        life: 0.3 + Math.random() * 0.35,
+        c: Math.random() < 0.5 ? '#ffd27a' : '#ff8a3a',
+      });
+    }
   }
 
   _spawnObstacle() {
@@ -298,6 +343,9 @@ export class RacingGame {
         o.hit = true;
         this.lives -= 1;
         this.invuln = INVULN_TIME;
+        this.shake = 0.55;      // screen kick
+        this.flash = 0.4;       // red flash
+        this._spawnSparks();    // impact sparks
         if (this.lives <= 0) { this.lives = 0; this._endGame(); }
         break;
       }
@@ -351,14 +399,95 @@ export class RacingGame {
   // ---- rendering --------------------------------------------------------
   _render() {
     const ctx = this.ctx;
+    ctx.fillStyle = '#04050a';
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); // backdrop so screen-shake edges stay black
+
+    ctx.save();
+    if (this.shake > 0) {
+      const s = this.shake * 7;
+      ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+    }
     this._drawSky(ctx);
     this._drawRoad(ctx);
+    this._drawHeadlight(ctx);
     this._drawScenery(ctx);
     this._drawObstacles(ctx);
     this._drawPlayer(ctx);
+    this._drawSpeedLines(ctx);
+    this._drawRain(ctx);
+    this._drawSparks(ctx);
     this._drawVignette(ctx);
+    ctx.restore();
+
+    if (this.flash > 0) {
+      ctx.fillStyle = 'rgba(255,45,45,' + (this.flash * 0.42).toFixed(3) + ')';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
     if (this.countdown > 0) this._drawCountdown(ctx);
     else if (this.paused) this._drawPause(ctx);
+  }
+
+  _drawHeadlight(ctx) {
+    const half = roadHalfAt(PLAYER_Y);
+    const cx = roadCenterX(PLAYER_Y, this.curve) + this.playerX * half;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(cx, PLAYER_Y - 70, 12, cx, PLAYER_Y - 70, 180);
+    g.addColorStop(0, 'rgba(214,224,255,0.15)');
+    g.addColorStop(1, 'rgba(214,224,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - 190, PLAYER_Y - 250, 380, 250);
+    ctx.restore();
+  }
+
+  _drawSpeedLines(ctx) {
+    const spd = (this.speed - 420) / 700;
+    if (spd <= 0) return;
+    const a = Math.min(0.22, spd * 0.22);
+    const vx = roadCenterX(HORIZON_Y, this.curve), vy = HORIZON_Y;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = 'rgba(205,218,255,' + a.toFixed(3) + ')';
+    ctx.lineWidth = 1.5;
+    const n = 16;
+    for (let i = 0; i < n; i++) {
+      const ang = (i / n) * Math.PI * 2 + this.roadPhase * 0.15;
+      const r1 = 130 + (this.roadOffset % 40) * 2.2;
+      const r2 = r1 + 70 * spd;
+      ctx.beginPath();
+      ctx.moveTo(vx + Math.cos(ang) * r1, vy + Math.sin(ang) * r1);
+      ctx.lineTo(vx + Math.cos(ang) * r2, vy + Math.sin(ang) * r2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _drawRain(ctx) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(180,196,228,0.26)';
+    ctx.lineWidth = 1.1;
+    const slant = 2 + this.speed * 0.01;
+    ctx.beginPath();
+    for (const d of this.rain) {
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x - slant, d.y + d.len);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawSparks(ctx) {
+    if (!this.sparks.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of this.sparks) {
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 3));
+      ctx.fillStyle = p.c;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   _drawSky(ctx) {
