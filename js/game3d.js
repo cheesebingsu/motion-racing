@@ -187,6 +187,7 @@ export class RacingGame3D {
     this.bldTex = [];
     this.buildingDay = false;
     this.landmark = null;
+    this.view = '3rd';        // '3rd' chase cam | '1st' cockpit
 
     // player car placeholder group (GLB added by _loadVehicle)
     this.carGroup = new THREE.Group();
@@ -275,9 +276,22 @@ export class RacingGame3D {
       const box2 = new THREE.Box3().setFromObject(car);
       car.position.y -= box2.min.y;
       car.rotation.y = -Math.PI / 2; // rear faces the chase camera
+      car.visible = this.view !== '1st'; // hide own body in cockpit view
       this.carModel = car;
       this.carGroup.add(car);
     });
+  }
+
+  // Position the camera for the active view and show/hide the player's own car.
+  _applyView() {
+    if (this.carModel) this.carModel.visible = this.view !== '1st';
+    if (this.view === '1st') {
+      this.camera.position.set(0, 1.5, 1.6);
+      this.camera.lookAt(0, 1.15, -40);
+    } else {
+      this.camera.position.set(0, 3.3, 8.5);
+      this.camera.lookAt(0, 0.9, -18);
+    }
   }
 
   // Build the traffic-car pool: every vehicle EXCEPT the player's pick, each
@@ -395,9 +409,11 @@ export class RacingGame3D {
     // resolve map + vehicle (default to the first of each)
     const map = MAPS.find((m) => m.id === opts.map) || MAPS[0];
     const veh = VEHICLES.find((v) => v.id === opts.vehicle) || VEHICLES[0];
+    this.view = opts.view === '1st' ? '1st' : '3rd';
     this._applyMap(map);
     this._loadVehicle(veh);
     this._loadTrafficModels(veh.id);
+    this._applyView();
 
     // difficulty modified by the vehicle's performance profile
     const base = DIFFICULTY[opts.difficulty] || DIFFICULTY.medium;
@@ -629,11 +645,22 @@ export class RacingGame3D {
     this.carGroup.rotation.y = this.carYaw; // steering yaw (base orientation set on the model)
     this.carGroup.rotation.z = this.carRoll;
 
-    // chase camera follows laterally + shake
-    const camX = carX * 0.55 + (this.shake ? (Math.random() - 0.5) * this.shake * 1.5 : 0);
-    this.camera.position.x += (camX - this.camera.position.x) * Math.min(1, dt * 4);
-    this.camera.position.y = 3.3 + (this.shake ? (Math.random() - 0.5) * this.shake : 0);
-    this.camera.lookAt(carX * 0.6, 0.9, -18);
+    // camera: cockpit (1st person) or chase (3rd person)
+    if (this.view === '1st') {
+      // sit at the driver's seat, follow the car fully, look down the road
+      const camX = carX + (this.shake ? (Math.random() - 0.5) * this.shake * 0.8 : 0);
+      this.camera.position.x += (camX - this.camera.position.x) * Math.min(1, dt * 9);
+      this.camera.position.y = 1.5 + (this.shake ? (Math.random() - 0.5) * this.shake * 0.5 : 0);
+      this.camera.position.z = 1.6;
+      this.camera.lookAt(carX + this.playerVX * 0.6, 1.15, -40);
+      this.camera.rotation.z += -this.carRoll * 0.5; // subtle cockpit lean (after lookAt)
+    } else {
+      const camX = carX * 0.55 + (this.shake ? (Math.random() - 0.5) * this.shake * 1.5 : 0);
+      this.camera.position.x += (camX - this.camera.position.x) * Math.min(1, dt * 4);
+      this.camera.position.y = 3.3 + (this.shake ? (Math.random() - 0.5) * this.shake : 0);
+      this.camera.position.z = 8.5;
+      this.camera.lookAt(carX * 0.6, 0.9, -18);
+    }
 
     // rain fall
     const rp = this.rain.geometry.attributes.position.array;

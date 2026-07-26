@@ -53,6 +53,7 @@ let selectedDifficulty = 'medium'; // 'easy' | 'medium' | 'hard'
 let selectedSensitivity = 1;  // steering sensitivity multiplier
 let selectedVehicle = VEHICLES[0].id;
 let selectedMap = MAPS[0].id;
+let selectedView = '3rd'; // '3rd' chase | '1st' cockpit
 
 // ---- home wizard: vehicle / map selection ---------------------------------
 // 5-pip rating (●●●○○) — far easier to read at a glance than a thin bar.
@@ -160,7 +161,7 @@ async function beginGame(practice) {
   if (tracker.setSensitivity) tracker.setSensitivity(selectedSensitivity);
   if (!game) game = new RacingGame(canvas, tracker);
   game.stop();                       // in case a game was already running
-  game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap });
+  game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap, view: selectedView });
   document.body.classList.add('playing'); // hide title chrome → maximise the game
 }
 
@@ -170,7 +171,7 @@ function restartGame() {
   if (!tracker) return; // shouldn't happen, but stay safe
   if (!game) game = new RacingGame(canvas, tracker);
   game.stop();
-  game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap });
+  game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap, view: selectedView });
 }
 
 // ---- back to the main menu (used by the in-game menu button) --------------
@@ -189,6 +190,19 @@ if (difficultyBox) {
     if (!btn) return;
     selectedDifficulty = btn.dataset.diff || 'medium';
     for (const b of difficultyBox.querySelectorAll('.difficulty__btn')) {
+      b.classList.toggle('is-selected', b === btn);
+    }
+  });
+}
+
+// ---- view (camera) selector -----------------------------------------------
+const viewBox = document.getElementById('viewsel');
+if (viewBox) {
+  viewBox.addEventListener('click', (e) => {
+    const btn = e.target.closest('.difficulty__btn');
+    if (!btn) return;
+    selectedView = btn.dataset.view || '3rd';
+    for (const b of viewBox.querySelectorAll('.difficulty__btn')) {
       b.classList.toggle('is-selected', b === btn);
     }
   });
