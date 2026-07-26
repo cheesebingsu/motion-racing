@@ -93,6 +93,7 @@ async function beginGame(practice) {
   if (!game) game = new RacingGame(canvas, tracker);
   game.stop();                       // in case a game was already running
   game.start({ practice: lastPractice, difficulty: selectedDifficulty });
+  document.body.classList.add('playing'); // hide title chrome → maximise the game
 }
 
 // ---- restart flow (reuse the same tracker / camera + last mode) ------------
@@ -109,6 +110,7 @@ function toMenu() {
   if (game) game.stop();
   if (gameoverScreen) gameoverScreen.hidden = true;
   setStatus('');
+  document.body.classList.remove('playing'); // bring the title chrome back
   if (startScreen) startScreen.hidden = false;
 }
 

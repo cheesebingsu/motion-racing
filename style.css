@@ -118,6 +118,21 @@ body {
     linear-gradient(180deg, #0a1030 0%, #12123a 45%, #1a0f2e 100%);
 }
 
+/* ---------- Playing: drop the title chrome and maximise the game ---------- */
+body.playing { padding: 0; }
+body.playing .app__title,
+body.playing .app__subtitle,
+body.playing .app__hint { display: none; }
+body.playing .app { gap: 0; }
+body.playing .stage {
+  width: min(100dvw, 100dvh * 16 / 9);
+  height: auto;
+  max-width: 100dvw;
+  max-height: 100dvh;
+  border: none;
+  border-radius: 0;
+}
+
 /* ---------- HUD overlay ---------- */
 .hud {
   position: absolute;

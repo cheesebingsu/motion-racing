@@ -12,6 +12,7 @@ const LANE_SPAN = ROAD_HALF * 0.82;
 const SPAWN_Z = -230;           // where obstacles/buildings appear ahead
 const PLAYER_MAX_X = 1.06;
 const WZ = 0.05;                // game-speed unit -> metres/sec
+const BLD_SPACING = 22;         // z-gap between buildings (> max depth → no overlap / z-fighting)
 
 const START_LIVES = 3;
 const INVULN_TIME = 1.6;
@@ -25,7 +26,7 @@ const laneX = (i) => -LANE_SPAN + (i * 2 * LANE_SPAN) / (LANES - 1);
 // startSpeed/maxSpeed/accel: speed curve. rowGap: metres between obstacle rows.
 // density: how many lanes a row blocks (the guaranteed-free path lane is never one).
 const DIFFICULTY = {
-  easy:   { key: 'easy',   label: '쉬움',   startSpeed: 150, maxSpeed: 520,  accel: 5,  rowGap: 72, density: 1, shift: 0.4 },
+  easy:   { key: 'easy',   label: '쉬움',   startSpeed: 150, maxSpeed: 520,  accel: 5,  rowGap: 60, density: 1, shift: 0.45 },
   medium: { key: 'medium', label: '중간',   startSpeed: 220, maxSpeed: 880,  accel: 9,  rowGap: 56, density: 2, shift: 0.6 },
   hard:   { key: 'hard',   label: '어려움', startSpeed: 340, maxSpeed: 1150, accel: 14, rowGap: 44, density: 3, shift: 0.85 },
 };
@@ -97,7 +98,8 @@ export class RacingGame3D {
     scene.fog = new THREE.Fog(0x121627, 70, 300);
     this.scene = scene;
 
-    const camera = new THREE.PerspectiveCamera(58, VIEW_W / VIEW_H, 0.1, 500);
+    this.maxAniso = renderer.capabilities.getMaxAnisotropy();
+    const camera = new THREE.PerspectiveCamera(58, VIEW_W / VIEW_H, 0.6, 600);
     camera.position.set(0, 3.3, 8.5);
     camera.lookAt(0, 0.9, -18);
     this.camera = camera;
@@ -233,7 +235,7 @@ export class RacingGame3D {
     this.carYaw = 0;
     this.carRoll = 0;
 
-    this.bldTimer = 0;
+    this.bldDist = 0;
     this.pathLane = Math.floor(LANES / 2); // guaranteed-free lane (starts centre)
     this.distSinceRow = this.diff.rowGap * 0.5; // first row after a short run-up
 
@@ -285,16 +287,18 @@ export class RacingGame3D {
 
   // ---- spawns -----------------------------------------------------------
   _prepopulate() {
-    for (let z = -14; z > SPAWN_Z; z -= 11 + Math.random() * 9) {
+    // uniform, non-overlapping spacing on each side (kills z-fighting flicker)
+    for (let z = -12; z > SPAWN_Z; z -= BLD_SPACING) {
       this._spawnBuilding(-1, z);
-      this._spawnBuilding(1, z - 5 - Math.random() * 6);
+      this._spawnBuilding(1, z - BLD_SPACING * 0.5); // stagger the far side
     }
+    this.bldDist = 0;
   }
 
   _spawnBuilding(side, zPos) {
     const h = 20 + Math.random() * 40;
     const w = 7 + Math.random() * 7;
-    const d = 7 + Math.random() * 8;
+    const d = 6 + Math.random() * 6; // < BLD_SPACING so buildings never overlap
     const geo = new THREE.BoxGeometry(w, h, d);
 
     // procedural lit-window facade on EVERY vertical face (no black sides)
@@ -302,6 +306,7 @@ export class RacingGame3D {
     const cols = Math.max(3, Math.round(w / 2.0));
     const rows = Math.max(6, Math.round(h / 2.3));
     const wt = makeWindowsTex(cols, rows, neon);
+    wt.anisotropy = this.maxAniso; // stop distant window shimmer / static
     const winMat = new THREE.MeshStandardMaterial({ map: wt, emissive: 0xffffff, emissiveMap: wt, emissiveIntensity: 1.05, roughness: 0.85 });
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x0a0c14, roughness: 0.95 });
 
@@ -311,6 +316,7 @@ export class RacingGame3D {
     // ~45% of buildings get a realistic photo billboard on the road-facing face
     if (this.bldTex && Math.random() < 0.45) {
       const tex = this.bldTex[Math.floor(Math.random() * this.bldTex.length)];
+      tex.anisotropy = this.maxAniso;
       mats[inner] = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.55, roughness: 0.8 });
     }
 
@@ -402,13 +408,29 @@ export class RacingGame3D {
     const worldMove = this.speed * WZ * dt;
     this.roadTex.offset.y -= worldMove / 20;
 
-    // buildings scroll toward camera (fill the whole street on the first frame)
+    // buildings scroll toward camera; fill on first frame, then top up at fixed
+    // spacing so they never overlap (no z-fighting flicker)
     if (this.buildings.length === 0) this._prepopulate();
-    this.bldTimer -= dt;
-    if (this.bldTimer <= 0) { this.bldTimer = 0.16; this._spawnBuilding(Math.random() < 0.5 ? -1 : 1); }
+    this.bldDist += worldMove;
+    if (this.bldDist >= BLD_SPACING) {
+      this.bldDist -= BLD_SPACING;
+      this._spawnBuilding(-1, SPAWN_Z);
+      this._spawnBuilding(1, SPAWN_Z - BLD_SPACING * 0.5);
+    }
     for (const b of this.buildings) b.node.position.z += worldMove;
     for (let i = this.buildings.length - 1; i >= 0; i--) {
-      if (this.buildings[i].node.position.z > 25) { this.scene.remove(this.buildings[i].node); this.buildings.splice(i, 1); }
+      const bn = this.buildings[i].node;
+      if (bn.position.z > 25) {
+        this.scene.remove(bn);
+        bn.geometry.dispose();
+        const mm = Array.isArray(bn.material) ? bn.material : [bn.material];
+        for (const m of mm) {
+          // dispose per-building window textures, but NOT the shared photo textures
+          if (m.map && (!this.bldTex || !this.bldTex.includes(m.map))) m.map.dispose();
+          m.dispose();
+        }
+        this.buildings.splice(i, 1);
+      }
     }
 
     // obstacles — spawned in ROWS spaced by distance, each with a guaranteed gap
