@@ -85,8 +85,40 @@ export const MAPS = [
     bg: 0x9fc2ea, fog: 0xbcd4ea, fogNear: 95, fogFar: 380,
     hemiSky: 0xcfe2f5, hemiGround: 0x70747c, hemiInt: 1.25,
     sun: 0xfff2df, sunInt: 1.7, sunPos: [-30, 55, -15],
-    glow: null, headlights: false, rain: false, exposure: 1.15,
+    glow: null, headlights: false, rain: false, exposure: 1.15, landmark: null,
     road: { base: '#3d4046', edge: 'rgba(245,245,245,0.85)', center: 'rgba(245,222,120,0.9)', divider: 'rgba(235,235,240,0.4)' },
+  },
+  {
+    id: 'paris', name: '파리', time: '노을', mode: 'day',
+    buildings: ['assets/paris-bld-1.png', 'assets/paris-bld-2.png', 'assets/paris-bld-3.png', 'assets/paris-bld-4.png', 'assets/paris-bld-5.png'],
+    bg: 0xe9a86a, fog: 0xf0c48a, fogNear: 90, fogFar: 360,
+    hemiSky: 0xf6d0a0, hemiGround: 0x5a5048, hemiInt: 1.1,
+    sun: 0xffd39a, sunInt: 1.55, sunPos: [-45, 22, -20],
+    glow: null, headlights: false, rain: false, exposure: 1.2,
+    landmark: { img: 'assets/lm-paris.png', aspect: 0.771, height: 165, x: -18 },
+    road: { base: '#41403c', edge: 'rgba(245,245,240,0.8)', center: 'rgba(245,215,120,0.9)', divider: 'rgba(235,232,225,0.4)' },
+  },
+  {
+    id: 'tokyo', name: '도쿄', time: '야간', mode: 'neon',
+    buildings: ['assets/tokyo-bld-1.png', 'assets/tokyo-bld-2.png', 'assets/tokyo-bld-3.png', 'assets/tokyo-bld-4.png', 'assets/tokyo-bld-5.png'],
+    bg: 0x0a0a14, fog: 0x14121c, fogNear: 65, fogFar: 290,
+    hemiSky: 0x3a3550, hemiGround: 0x0a0a12, hemiInt: 0.85,
+    sun: 0x8890c0, sunInt: 0.7, sunPos: [-8, 14, -6],
+    glow: { color: 0xff7a3d, pos: [0, 10, -160], intensity: 55, dist: 280 },
+    headlights: true, rain: true, exposure: 1.8,
+    landmark: { img: 'assets/lm-tokyo.png', aspect: 0.574, height: 180, x: -18 },
+    road: { base: '#17181e', edge: 'rgba(230,230,240,0.7)', center: 'rgba(240,222,150,0.85)', divider: 'rgba(220,220,230,0.3)' },
+  },
+  {
+    id: 'seoul', name: '서울', time: '저녁', mode: 'neon',
+    buildings: ['assets/seoul-bld-1.png', 'assets/seoul-bld-2.png', 'assets/seoul-bld-3.png', 'assets/seoul-bld-4.png', 'assets/seoul-bld-5.png'],
+    bg: 0x2a3a63, fog: 0x33406a, fogNear: 80, fogFar: 330,
+    hemiSky: 0x6a7ab0, hemiGround: 0x181b26, hemiInt: 1.15,
+    sun: 0xb0bce0, sunInt: 1.0, sunPos: [-20, 26, -14],
+    glow: { color: 0xffb070, pos: [0, 10, -180], intensity: 35, dist: 280 },
+    headlights: true, rain: false, exposure: 1.6,
+    landmark: { img: 'assets/lm-seoul.png', aspect: 0.269, height: 200, x: -18 },
+    road: { base: '#1c2030', edge: 'rgba(230,232,240,0.7)', center: 'rgba(240,222,150,0.85)', divider: 'rgba(220,222,235,0.32)' },
   },
   {
     id: 'neon', name: '네온 시티', time: '밤', mode: 'neon',
@@ -95,7 +127,7 @@ export const MAPS = [
     hemiSky: 0x445577, hemiGround: 0x0a0c12, hemiInt: 0.9,
     sun: 0xaabbff, sunInt: 0.8, sunPos: [-8, 12, -6],
     glow: { color: 0xff9a4d, pos: [0, 8, -180], intensity: 60, dist: 260 },
-    headlights: true, rain: true, exposure: 1.85,
+    headlights: true, rain: true, exposure: 1.85, landmark: null,
     road: { base: '#1a1c22', edge: 'rgba(230,230,240,0.7)', center: 'rgba(240,222,150,0.85)', divider: 'rgba(220,220,230,0.3)' },
   },
 ];
@@ -150,6 +182,7 @@ export class RacingGame3D {
     this.currentVehicleId = null;
     this.bldTex = [];
     this.buildingDay = false;
+    this.landmark = null;
 
     // player car placeholder group (GLB added by _loadVehicle)
     this.carGroup = new THREE.Group();
@@ -200,6 +233,23 @@ export class RacingGame3D {
 
     // load this city's building photo textures
     this.bldTex = map.buildings.map((u) => { const t = loadTex(u); t.anisotropy = this.maxAniso; return t; });
+
+    // skyline landmark billboard (Eiffel / Tokyo Tower / N Seoul Tower ...).
+    // Anchored far down the avenue; unlit + fog-free so it reads as a crisp icon.
+    // (was disposed with mapObjs above; recreate for the new city)
+    this.landmark = null;
+    if (map.landmark) {
+      const lm = map.landmark;
+      const lt = loadTex(lm.img); lt.anisotropy = this.maxAniso;
+      const plane = new THREE.Mesh(
+        new THREE.PlaneGeometry(lm.height * lm.aspect, lm.height),
+        new THREE.MeshBasicMaterial({ map: lt, transparent: true, depthWrite: false, fog: false })
+      );
+      plane.position.set(lm.x, lm.height / 2, -300);
+      plane.renderOrder = -1;
+      this.scene.add(plane); this.mapObjs.push(plane);
+      this.landmark = plane;
+    }
 
     // clear any existing buildings so the new city repopulates
     for (const b of this.buildings) this.scene.remove(b.node);
