@@ -645,17 +645,18 @@ export class RacingGame3D {
     this.carGroup.rotation.y = this.carYaw; // steering yaw (base orientation set on the model)
     this.carGroup.rotation.z = this.carRoll;
 
-    // camera: cockpit (1st person) or chase (3rd person)
+    // camera: cockpit (1st person) or chase (3rd person). camX is reused by rain below.
+    let camX;
     if (this.view === '1st') {
       // sit at the driver's seat, follow the car fully, look down the road
-      const camX = carX + (this.shake ? (Math.random() - 0.5) * this.shake * 0.8 : 0);
+      camX = carX + (this.shake ? (Math.random() - 0.5) * this.shake * 0.8 : 0);
       this.camera.position.x += (camX - this.camera.position.x) * Math.min(1, dt * 9);
       this.camera.position.y = 1.5 + (this.shake ? (Math.random() - 0.5) * this.shake * 0.5 : 0);
       this.camera.position.z = 1.6;
       this.camera.lookAt(carX + this.playerVX * 0.6, 1.15, -40);
       this.camera.rotation.z += -this.carRoll * 0.5; // subtle cockpit lean (after lookAt)
     } else {
-      const camX = carX * 0.55 + (this.shake ? (Math.random() - 0.5) * this.shake * 1.5 : 0);
+      camX = carX * 0.55 + (this.shake ? (Math.random() - 0.5) * this.shake * 1.5 : 0);
       this.camera.position.x += (camX - this.camera.position.x) * Math.min(1, dt * 4);
       this.camera.position.y = 3.3 + (this.shake ? (Math.random() - 0.5) * this.shake : 0);
       this.camera.position.z = 8.5;
