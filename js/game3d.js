@@ -419,7 +419,7 @@ export class RacingGame3D {
   _spawnBuilding(side, zPos) {
     const h = 20 + Math.random() * 40;
     const w = 7 + Math.random() * 7;
-    const d = 6 + Math.random() * 6; // < BLD_SPACING so buildings never overlap
+    const d = 5 + Math.random() * 4; // shallow-ish so the sides read as facade, not a fat box
     const geo = new THREE.BoxGeometry(w, h, d);
 
     // window facade on EVERY vertical face (no black sides). Day = daylight-lit
@@ -438,13 +438,19 @@ export class RacingGame3D {
     // BoxGeometry face order: +x,-x,+y,-y,+z,-z
     const inner = side < 0 ? 0 : 1; // road-facing face
     const mats = [winMat, winMat, roofMat, roofMat, winMat, winMat];
-    // ~50% of buildings get a realistic city photo on the road-facing face
-    if (this.bldTex && this.bldTex.length && Math.random() < 0.5) {
+    // Most buildings get a realistic city photo — put it on EVERY visible face
+    // (road-facing + both ends) so the sides match the front instead of showing
+    // the toy window grid. Only the outer face (away from the road, never seen)
+    // keeps the cheap procedural texture.
+    if (this.bldTex && this.bldTex.length && Math.random() < 0.8) {
       const tex = this.bldTex[Math.floor(Math.random() * this.bldTex.length)];
       tex.anisotropy = this.maxAniso;
-      mats[inner] = day
+      const photoMat = day
         ? new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75, metalness: 0.1 })
         : new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.55, roughness: 0.8 });
+      mats[inner] = photoMat; // road-facing
+      mats[4] = photoMat;     // +z end
+      mats[5] = photoMat;     // -z end
     }
 
     const node = new THREE.Mesh(geo, mats);

@@ -46,8 +46,8 @@ if (fullscreenBtn) fullscreenBtn.addEventListener('click', toggleFullscreen);
 
 // ---- shared state (tracker/camera is created once, reused across restarts) -
 let tracker = null;
+let trackerPromise = null;    // shared so step-3 prewarm and 게임 시작 don't double-request
 let game = null;
-let starting = false;
 let lastPractice = false;     // remember the mode so restart replays it
 let selectedDifficulty = 'medium'; // 'easy' | 'medium' | 'hard'
 let selectedSensitivity = 1;  // steering sensitivity multiplier
@@ -55,9 +55,15 @@ let selectedVehicle = VEHICLES[0].id;
 let selectedMap = MAPS[0].id;
 
 // ---- home wizard: vehicle / map selection ---------------------------------
-function statBar(label, v) {
-  const pct = Math.round(Math.min(1, Math.max(0, (v - 0.7) / 0.6)) * 100);
-  return '<div class="stat"><span>' + label + '</span><i><b style="width:' + pct + '%"></b></i></div>';
+// 5-pip rating (●●●○○) — far easier to read at a glance than a thin bar.
+function statRating(v) {
+  return v < 0.85 ? 1 : v < 0.93 ? 2 : v < 1.02 ? 3 : v < 1.12 ? 4 : 5;
+}
+function statRow(label, v) {
+  const n = statRating(v);
+  let pips = '';
+  for (let i = 0; i < 5; i++) pips += '<i class="' + (i < n ? 'on' : '') + '"></i>';
+  return '<div class="stat"><span>' + label + '</span><div class="pips">' + pips + '</div></div>';
 }
 function buildVehicleGrid() {
   const grid = document.getElementById('vehicle-grid');
@@ -65,7 +71,7 @@ function buildVehicleGrid() {
   grid.innerHTML = VEHICLES.map((v) =>
     '<button class="pickcard' + (v.id === selectedVehicle ? ' is-selected' : '') + '" data-veh="' + v.id + '">' +
     '<span class="pickcard__name">' + v.name + '</span>' +
-    '<div class="pickcard__stats">' + statBar('속도', v.speed) + statBar('가속', v.accel) + statBar('조향', v.handling) + '</div>' +
+    '<div class="pickcard__stats">' + statRow('속도', v.speed) + statRow('가속', v.accel) + statRow('조향', v.handling) + '</div>' +
     '</button>'
   ).join('');
   grid.onclick = (e) => {
@@ -91,6 +97,10 @@ function buildMapGrid() {
 }
 function showStep(n) {
   for (const s of document.querySelectorAll('.wstep')) s.hidden = s.dataset.step !== String(n);
+  // On the last step, request the camera NOW (this click is a user gesture and we're
+  // not fullscreen yet, so the permission popup is visible). By the time they press
+  // 게임 시작, access is already granted and fullscreen can kick in cleanly.
+  if (n === 3) ensureTracker();
 }
 document.addEventListener('click', (e) => {
   const nx = e.target.closest('[data-next]'); if (nx) { showStep(+nx.dataset.next); return; }
@@ -108,34 +118,44 @@ function setStatus(text, kind) {
   if (kind) status.classList.add(kind);
 }
 
-// ---- start flow (works for both normal and practice mode) -----------------
-async function beginGame(practice) {
-  if (starting) return;
-  enterFullscreen(); // within the click gesture → hides mobile browser bars
-
-  lastPractice = !!practice;
-  if (startScreen) startScreen.hidden = true;
-  if (gameoverScreen) gameoverScreen.hidden = true;
-
-  // Create the camera/tracker once; reuse it on later runs & mode switches.
-  if (!tracker) {
-    starting = true;
-    setStatus('카메라 준비 중...');
-    try {
-      tracker = await createHandTracker(cam, camOverlay);
-    } catch (err) {
-      starting = false;
-      if (startScreen) startScreen.hidden = false; // let them try again
+// Create the camera/tracker once; reuse it across runs & mode switches.
+// Shared promise so the step-3 prewarm and 게임 시작 never double-request.
+function ensureTracker() {
+  if (tracker) return Promise.resolve(tracker);
+  if (trackerPromise) return trackerPromise;
+  setStatus('카메라 준비 중... 권한을 허용해 주세요');
+  trackerPromise = createHandTracker(cam, camOverlay)
+    .then((t) => {
+      tracker = t;
+      if (tracker.setSensitivity) tracker.setSensitivity(selectedSensitivity);
+      setStatus('');
+      return tracker;
+    })
+    .catch((err) => {
+      trackerPromise = null; // allow another attempt
       setStatus(
         (err && err.message ? err.message : '카메라를 시작하지 못했습니다.') +
           ' — 카메라 권한을 허용하고 localhost 또는 https 에서 실행하세요.',
         'is-error'
       );
-      return;
-    }
-    setStatus('');
-    starting = false;
-  }
+      return null;
+    });
+  return trackerPromise;
+}
+
+// ---- start flow (works for both normal and practice mode) -----------------
+async function beginGame(practice) {
+  lastPractice = !!practice;
+
+  // 1) Camera permission FIRST — the popup is visible because we're not yet
+  //    fullscreen. (Usually already granted during step 3, so this is instant.)
+  const t = await ensureTracker();
+  if (!t) return; // denied/failed → stay on the start screen with the error shown
+
+  // 2) Access granted → now go fullscreen (still inside the click's activation).
+  enterFullscreen();
+  if (startScreen) startScreen.hidden = true;
+  if (gameoverScreen) gameoverScreen.hidden = true;
 
   if (tracker.setSensitivity) tracker.setSensitivity(selectedSensitivity);
   if (!game) game = new RacingGame(canvas, tracker);

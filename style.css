@@ -601,26 +601,25 @@ body.playing .stage {
 .stat {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 10.5px;
+  gap: 8px;
+  font-size: 11px;
   color: var(--text-dim);
 }
 
-.stat > span { width: 26px; flex: none; }
+.stat > span { width: 30px; flex: none; }
 
-.stat > i {
-  flex: 1;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(122, 92, 255, 0.2);
-  overflow: hidden;
+.pips { display: flex; gap: 3px; }
+
+.pips > i {
+  width: 13px;
+  height: 7px;
+  border-radius: 2px;
+  background: rgba(122, 92, 255, 0.22);
 }
 
-.stat > i > b {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
+.pips > i.on {
   background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta));
+  box-shadow: 0 0 5px rgba(35, 224, 255, 0.5);
 }
 
 /* Map cards: taller, centred, with a time-of-day badge. */
