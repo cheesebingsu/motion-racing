@@ -223,8 +223,8 @@ body.playing .stage {
 .wheel {
   position: absolute;
   left: 50%;
-  bottom: -50cqh;            /* only the top arc shows, below the player car */
-  width: 82cqh;              /* cockpit wheel at the very bottom */
+  bottom: -34cqh;           /* full round wheel: top half rises from the bottom edge */
+  width: 82cqh;             /* cockpit wheel at the very bottom */
   height: auto;
   /* main.js sets `transform: translateX(-50%) rotate(Xdeg)` — keep the centring. */
   transform: translateX(-50%) rotate(0deg);

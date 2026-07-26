@@ -715,8 +715,11 @@ export class RacingGame3D {
   }
 
   _render() {
-    // flash the car during invulnerability
-    if (this.carModel) this.carModel.visible = !(this.invuln > 0 && Math.floor(this.invuln * 12) % 2 === 0);
+    // flash the car during invulnerability — but never show it in cockpit view
+    if (this.carModel) {
+      const blinkOff = this.invuln > 0 && Math.floor(this.invuln * 12) % 2 === 0;
+      this.carModel.visible = this.view !== '1st' && !blinkOff;
+    }
     this.renderer.render(this.scene, this.camera);
   }
 }
