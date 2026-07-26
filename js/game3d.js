@@ -32,6 +32,8 @@ const DIFFICULTY = {
 };
 
 const CAR_TINTS = [0xff4455, 0x44aaff, 0xffcc44, 0x66ff88, 0xffffff, 0xaa66ff];
+const TRAFFIC_TINTS = CAR_TINTS.map((c) => new THREE.Color(c)); // multiply onto traffic cars
+const BARREL_COLORS = [0xffc02a, 0x2a6cff, 0xd83a2a, 0x3aa84a];
 const WIN_WARM = ['#ffcf95', '#ffab5e', '#fff0cc', '#ffd27a'];
 const WIN_COOL = ['#66e0ff', '#ff6ad5', '#b088ff', '#88ffcc', '#5ea8ff'];
 
@@ -180,6 +182,8 @@ export class RacingGame3D {
     this.obstacles = [];
     this.currentMapId = null;
     this.currentVehicleId = null;
+    this.trafficModels = [];  // other vehicles used as traffic (never the player's pick)
+    this.trafficVehicleId = null;
     this.bldTex = [];
     this.buildingDay = false;
     this.landmark = null;
@@ -276,6 +280,30 @@ export class RacingGame3D {
     });
   }
 
+  // Build the traffic-car pool: every vehicle EXCEPT the player's pick, each
+  // normalised + prepared so it can be cloned cheaply per obstacle. Rear faces
+  // us (traffic drives the same way). Recolored per-spawn for extra variety.
+  _loadTrafficModels(excludeId) {
+    if (this.trafficVehicleId === excludeId && this.trafficModels.length) return;
+    this.trafficVehicleId = excludeId;
+    this.trafficModels = [];
+    for (const v of VEHICLES) {
+      if (v.id === excludeId) continue;
+      loadGLB(v.glb).then((car) => {
+        if (!car || this.trafficVehicleId !== excludeId) return;
+        const box = new THREE.Box3().setFromObject(car);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        car.position.sub(center);
+        car.scale.setScalar((v.scale * SIZE) / Math.max(size.x, size.z));
+        const box2 = new THREE.Box3().setFromObject(car);
+        car.position.y -= box2.min.y;
+        car.rotation.y = -Math.PI / 2; // rear faces us (same-direction traffic)
+        this.trafficModels.push(car);
+      });
+    }
+  }
+
   _buildRoad(rc) {
     // asphalt + lane markings via a canvas texture, tiled down the road
     const c = document.createElement('canvas'); c.width = 256; c.height = 512;
@@ -369,6 +397,7 @@ export class RacingGame3D {
     const veh = VEHICLES.find((v) => v.id === opts.vehicle) || VEHICLES[0];
     this._applyMap(map);
     this._loadVehicle(veh);
+    this._loadTrafficModels(veh.id);
 
     // difficulty modified by the vehicle's performance profile
     const base = DIFFICULTY[opts.difficulty] || DIFFICULTY.medium;
@@ -478,10 +507,13 @@ export class RacingGame3D {
   _spawnObstacleAt(x) {
     const r = Math.random();
     let node, half;
-    if (r < 0.5 && this.carModel) {
-      node = this.carModel.clone(true);
-      node.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(0.85); } });
-      node.rotation.y = -Math.PI / 2; // rear faces us (traffic driving the same way)
+    if (r < 0.55 && this.trafficModels.length) {
+      // Traffic = one of the OTHER vehicles (never the player's pick), tinted a
+      // random colour so no two look identical.
+      const base = this.trafficModels[Math.floor(Math.random() * this.trafficModels.length)];
+      node = base.clone(true);
+      const tint = TRAFFIC_TINTS[Math.floor(Math.random() * TRAFFIC_TINTS.length)];
+      node.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiply(tint); } });
       half = 1.2 * SIZE;
     } else if (r < 0.72) {
       const m = new THREE.Mesh(new THREE.ConeGeometry(0.5 * SIZE, 1.1 * SIZE, 20), new THREE.MeshStandardMaterial({ color: 0xff6a1a, emissive: 0xff5510, emissiveIntensity: 0.3, roughness: 0.6 }));
@@ -489,6 +521,16 @@ export class RacingGame3D {
       const band = new THREE.Mesh(new THREE.CylinderGeometry(0.42 * SIZE, 0.5 * SIZE, 0.22 * SIZE, 20), new THREE.MeshStandardMaterial({ color: 0xffffff }));
       band.position.y = 0.55 * SIZE; node.add(band);
       half = 0.6 * SIZE;
+    } else if (r < 0.86) {
+      // oil drum / barrel
+      const col = BARREL_COLORS[Math.floor(Math.random() * BARREL_COLORS.length)];
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.55 * SIZE, 0.55 * SIZE, 1.4 * SIZE, 22), new THREE.MeshStandardMaterial({ color: col, metalness: 0.4, roughness: 0.5 }));
+      drum.position.y = 0.7 * SIZE; node = new THREE.Group(); node.add(drum);
+      for (const yy of [0.45, 0.95]) {
+        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.57 * SIZE, 0.57 * SIZE, 0.1 * SIZE, 22), new THREE.MeshStandardMaterial({ color: 0xf2f2f2 }));
+        ring.position.y = yy * SIZE; node.add(ring);
+      }
+      half = 0.62 * SIZE;
     } else {
       const m = new THREE.Mesh(new THREE.BoxGeometry(3.0 * SIZE, 1.1 * SIZE, 0.5 * SIZE), new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xaa4400, emissiveIntensity: 0.25, roughness: 0.7 }));
       m.position.y = 0.75 * SIZE; node = new THREE.Group(); node.add(m);
