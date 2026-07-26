@@ -544,6 +544,113 @@ body.playing .stage {
   border: 2px solid #06070f;
 }
 
+/* ---------- Home wizard (vehicle → map → difficulty) ---------- */
+.wizard { max-width: 460px; }
+
+.wstep__label {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--neon-cyan);
+  margin: 0 0 12px;
+  text-align: center;
+}
+
+.pickgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.pickcard {
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  padding: 12px 13px;
+  border-radius: var(--radius-sm);
+  background: rgba(5, 7, 18, 0.55);
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.2s ease, transform 0.08s ease;
+}
+
+.pickcard:hover { border-color: rgba(35, 224, 255, 0.6); }
+.pickcard:active { transform: scale(0.98); }
+
+.pickcard.is-selected {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 16px rgba(35, 224, 255, 0.45), inset 0 0 20px rgba(35, 224, 255, 0.08);
+}
+
+.pickcard__name {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.pickcard__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.stat > span { width: 26px; flex: none; }
+
+.stat > i {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(122, 92, 255, 0.2);
+  overflow: hidden;
+}
+
+.stat > i > b {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta));
+}
+
+/* Map cards: taller, centred, with a time-of-day badge. */
+.pickcard--map {
+  align-items: center;
+  justify-content: center;
+  min-height: 78px;
+  gap: 6px;
+}
+
+.pickcard__badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--neon-yellow);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(255, 210, 60, 0.12);
+  border: 1px solid rgba(255, 210, 60, 0.3);
+}
+
+.wstep__nav {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  margin: 4px 0 10px;
+}
+
+.wstep__nav .btn { flex: 1; padding-left: 0; padding-right: 0; }
+
 /* Hidden unless a phone is held in portrait (see media query below). */
 .rotate-hint { display: none; }
 

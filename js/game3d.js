@@ -35,21 +35,30 @@ const CAR_TINTS = [0xff4455, 0x44aaff, 0xffcc44, 0x66ff88, 0xffffff, 0xaa66ff];
 const WIN_WARM = ['#ffcf95', '#ffab5e', '#fff0cc', '#ffd27a'];
 const WIN_COOL = ['#66e0ff', '#ff6ad5', '#b088ff', '#88ffcc', '#5ea8ff'];
 
-// Procedural neon-window facade texture sized to a building, so every side of the
-// box reads as a lit 3D tower (no black faces).
-function makeWindowsTex(cols, rows, neon) {
+// Procedural window-facade texture sized to a building. night=neon lit windows;
+// day=concrete/glass with dark daytime windows (lit by the scene, not emissive).
+const DAY_WALLS = ['#9aa0a8', '#b7b2a6', '#8f9aa6', '#a8a29a'];
+function makeWindowsTex(cols, rows, neon, day) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 512;
   const g = c.getContext('2d');
-  g.fillStyle = '#0b0d16'; g.fillRect(0, 0, 256, 512);
+  if (day) {
+    g.fillStyle = DAY_WALLS[Math.floor(Math.random() * DAY_WALLS.length)];
+    g.fillRect(0, 0, 256, 512);
+  } else {
+    g.fillStyle = '#0b0d16'; g.fillRect(0, 0, 256, 512);
+  }
   const cw = 256 / cols, rh = 512 / rows;
   for (let r = 0; r < rows; r++) {
     for (let col = 0; col < cols; col++) {
-      const lit = Math.random() < 0.42;
-      if (lit) {
-        g.fillStyle = neon[Math.floor(Math.random() * neon.length)];
-        g.globalAlpha = 0.55 + Math.random() * 0.45;
+      if (day) {
+        // dark tinted-glass windows, occasional bright reflection
+        const refl = Math.random() < 0.12;
+        g.fillStyle = refl ? '#cfe0ee' : '#3b4652';
+        g.globalAlpha = refl ? 0.8 : (0.7 + Math.random() * 0.25);
       } else {
-        g.fillStyle = '#151a2b'; g.globalAlpha = 1;
+        const lit = Math.random() < 0.42;
+        if (lit) { g.fillStyle = neon[Math.floor(Math.random() * neon.length)]; g.globalAlpha = 0.55 + Math.random() * 0.45; }
+        else { g.fillStyle = '#151a2b'; g.globalAlpha = 1; }
       }
       g.fillRect(col * cw + cw * 0.18, r * rh + rh * 0.18, cw * 0.64, rh * 0.6);
     }
@@ -59,6 +68,37 @@ function makeWindowsTex(cols, rows, neon) {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+
+// ---- selectable vehicles (each a real 3D GLB) with performance profiles ----
+export const VEHICLES = [
+  { id: 'sports',  name: '스포츠카',  glb: 'assets/car-player.glb',  scale: 4.6, speed: 1.0,  accel: 1.0,  handling: 1.0 },
+  { id: 'super',   name: '슈퍼카',    glb: 'assets/car-super.glb',   scale: 4.5, speed: 1.18, accel: 1.2,  handling: 1.25 },
+  { id: 'suv',     name: 'SUV',       glb: 'assets/car-suv3d.glb',   scale: 5.4, speed: 0.86, accel: 0.85, handling: 0.78 },
+  { id: 'classic', name: '클래식',    glb: 'assets/car-classic.glb', scale: 4.9, speed: 0.98, accel: 0.92, handling: 0.9 },
+];
+
+// ---- selectable maps (real world cities, per-city time of day) --------------
+export const MAPS = [
+  {
+    id: 'newyork', name: '뉴욕', time: '낮', mode: 'day',
+    buildings: ['assets/ny-bld-1.png', 'assets/ny-bld-2.png', 'assets/ny-bld-3.png', 'assets/ny-bld-4.png', 'assets/ny-bld-5.png'],
+    bg: 0x9fc2ea, fog: 0xbcd4ea, fogNear: 95, fogFar: 380,
+    hemiSky: 0xcfe2f5, hemiGround: 0x70747c, hemiInt: 1.25,
+    sun: 0xfff2df, sunInt: 1.7, sunPos: [-30, 55, -15],
+    glow: null, headlights: false, rain: false, exposure: 1.15,
+    road: { base: '#3d4046', edge: 'rgba(245,245,245,0.85)', center: 'rgba(245,222,120,0.9)', divider: 'rgba(235,235,240,0.4)' },
+  },
+  {
+    id: 'neon', name: '네온 시티', time: '밤', mode: 'neon',
+    buildings: ['assets/bld-glass.png', 'assets/bld-apt.png', 'assets/bld-billboard.png', 'assets/bld-industrial.png'],
+    bg: 0x070912, fog: 0x121627, fogNear: 70, fogFar: 300,
+    hemiSky: 0x445577, hemiGround: 0x0a0c12, hemiInt: 0.9,
+    sun: 0xaabbff, sunInt: 0.8, sunPos: [-8, 12, -6],
+    glow: { color: 0xff9a4d, pos: [0, 8, -180], intensity: 60, dist: 260 },
+    headlights: true, rain: true, exposure: 1.85,
+    road: { base: '#1a1c22', edge: 'rgba(230,230,240,0.7)', center: 'rgba(240,222,150,0.85)', divider: 'rgba(220,220,230,0.3)' },
+  },
+];
 
 const loader = new GLTFLoader();
 function loadGLB(url) {
@@ -94,8 +134,6 @@ export class RacingGame3D {
     this.renderer = renderer;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x070912);
-    scene.fog = new THREE.Fog(0x121627, 70, 300);
     this.scene = scene;
 
     this.maxAniso = renderer.capabilities.getMaxAnisotropy();
@@ -104,106 +142,122 @@ export class RacingGame3D {
     camera.lookAt(0, 0.9, -18);
     this.camera = camera;
 
-    // ---- lights ----
-    scene.add(new THREE.HemisphereLight(0x445577, 0x0a0c12, 0.9));
-    const moon = new THREE.DirectionalLight(0xaabbff, 0.8);
-    moon.position.set(-8, 12, -6);
-    scene.add(moon);
-    // distant city glow at the horizon
-    const glow = new THREE.PointLight(0xff9a4d, 60, 260, 2);
-    glow.position.set(0, 8, -180);
-    scene.add(glow);
-
-    this._buildRoad();
     this._buildRainSystem();
-
-    // pools
+    this.mapObjs = [];        // per-map lights/road (rebuilt by _applyMap)
     this.buildings = [];
     this.obstacles = [];
+    this.currentMapId = null;
+    this.currentVehicleId = null;
+    this.bldTex = [];
+    this.buildingDay = false;
 
-    // player car placeholder group (mesh added when GLB loads)
+    // player car placeholder group (GLB added by _loadVehicle)
     this.carGroup = new THREE.Group();
-    this.carGroup.position.set(0, 0, 0);
     scene.add(this.carGroup);
-    // headlights
+    // headlights (toggled per map)
     const hlL = new THREE.SpotLight(0xeaf0ff, 40, 90, 0.5, 0.4, 1.5);
     hlL.position.set(-0.7, 0.7, -1.6); hlL.target.position.set(-1.2, 0.2, -30);
     const hlR = hlL.clone(); hlR.position.x = 0.7; hlR.target.position.x = 1.2;
+    this.headL = hlL; this.headR = hlR;
     this.carGroup.add(hlL, hlL.target, hlR, hlR.target);
-
-    this._assetsReady = false;
-    this._loadAssets();
 
     this._loop = this._loop.bind(this);
     this.diff = DIFFICULTY.medium;
+    this.handlingMult = 1;
     this._resetState();
   }
 
-  async _loadAssets() {
-    const [car, ...blds] = await Promise.all([
-      loadGLB('assets/car-player.glb'),
-      loadTex('assets/bld-glass.png'),
-      loadTex('assets/bld-apt.png'),
-      loadTex('assets/bld-billboard.png'),
-      loadTex('assets/bld-industrial.png'),
-    ]);
-    this.bldTex = blds;
-    if (car) {
-      // normalise: centre on origin, scale to ~2m wide, face -Z (away from camera)
+  // Rebuild the whole environment (lights, sky, fog, road) for a city map.
+  _applyMap(map) {
+    if (this.currentMapId === map.id) return;
+    this.currentMapId = map.id;
+    for (const o of this.mapObjs) {
+      this.scene.remove(o);
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) { const mm = Array.isArray(o.material) ? o.material : [o.material]; for (const m of mm) { if (m.map) m.map.dispose(); m.dispose(); } }
+    }
+    this.mapObjs = [];
+
+    this.scene.background = new THREE.Color(map.bg);
+    this.scene.fog = new THREE.Fog(map.fog, map.fogNear, map.fogFar);
+    this.renderer.toneMappingExposure = map.exposure;
+
+    const hemi = new THREE.HemisphereLight(map.hemiSky, map.hemiGround, map.hemiInt);
+    this.scene.add(hemi); this.mapObjs.push(hemi);
+    const sun = new THREE.DirectionalLight(map.sun, map.sunInt);
+    sun.position.set(map.sunPos[0], map.sunPos[1], map.sunPos[2]);
+    this.scene.add(sun); this.mapObjs.push(sun);
+    if (map.glow) {
+      const glow = new THREE.PointLight(map.glow.color, map.glow.intensity, map.glow.dist, 2);
+      glow.position.set(map.glow.pos[0], map.glow.pos[1], map.glow.pos[2]);
+      this.scene.add(glow); this.mapObjs.push(glow);
+    }
+
+    this.buildingDay = map.mode === 'day';
+    this._buildRoad(map.road);
+    this.headL.visible = this.headR.visible = !!map.headlights;
+    if (this.rain) this.rain.visible = !!map.rain;
+
+    // load this city's building photo textures
+    this.bldTex = map.buildings.map((u) => { const t = loadTex(u); t.anisotropy = this.maxAniso; return t; });
+
+    // clear any existing buildings so the new city repopulates
+    for (const b of this.buildings) this.scene.remove(b.node);
+    this.buildings = [];
+  }
+
+  // Load the selected vehicle GLB into the car group (replaces the previous one).
+  _loadVehicle(v) {
+    if (this.currentVehicleId === v.id) return;
+    this.currentVehicleId = v.id;
+    if (this.carModel) { this.carGroup.remove(this.carModel); this.carModel = null; }
+    loadGLB(v.glb).then((car) => {
+      if (!car || this.currentVehicleId !== v.id) return;
       const box = new THREE.Box3().setFromObject(car);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       car.position.sub(center);
-      const scale = (4.6 * SIZE) / Math.max(size.x, size.z);
-      car.scale.setScalar(scale);
-      // drop so wheels sit on the ground
+      car.scale.setScalar((v.scale * SIZE) / Math.max(size.x, size.z));
       const box2 = new THREE.Box3().setFromObject(car);
       car.position.y -= box2.min.y;
-      car.rotation.y = -Math.PI / 2; // orient so the REAR faces the chase camera
+      car.rotation.y = -Math.PI / 2; // rear faces the chase camera
       this.carModel = car;
       this.carGroup.add(car);
-    }
-    this._assetsReady = true;
+    });
   }
 
-  _buildRoad() {
+  _buildRoad(rc) {
     // asphalt + lane markings via a canvas texture, tiled down the road
     const c = document.createElement('canvas'); c.width = 256; c.height = 512;
     const g = c.getContext('2d');
-    g.fillStyle = '#1a1c22'; g.fillRect(0, 0, 256, 512);
-    // subtle asphalt speckle
+    g.fillStyle = rc.base; g.fillRect(0, 0, 256, 512);
     for (let i = 0; i < 500; i++) { g.fillStyle = 'rgba(255,255,255,' + (Math.random() * 0.03) + ')'; g.fillRect(Math.random() * 256, Math.random() * 512, 2, 2); }
-    // edge lines
-    g.fillStyle = 'rgba(230,230,240,0.7)'; g.fillRect(10, 0, 6, 512); g.fillRect(240, 0, 6, 512);
-    // dashed centre
-    g.fillStyle = 'rgba(240,222,150,0.85)';
+    g.fillStyle = rc.edge; g.fillRect(10, 0, 6, 512); g.fillRect(240, 0, 6, 512);
+    g.fillStyle = rc.center;
     for (let y = 0; y < 512; y += 90) g.fillRect(125, y, 6, 50);
-    // lane dividers (dashed white)
-    g.fillStyle = 'rgba(220,220,230,0.35)';
+    g.fillStyle = rc.divider;
     for (let y = 30; y < 512; y += 90) { g.fillRect(66, y, 4, 46); g.fillRect(186, y, 4, 46); }
     const tex = new THREE.CanvasTexture(c);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(1, 26);
-    tex.anisotropy = 8;
+    tex.anisotropy = this.maxAniso;
     this.roadTex = tex;
 
     const road = new THREE.Mesh(
       new THREE.PlaneGeometry(ROAD_HALF * 2, 520),
-      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55, metalness: 0.1, color: 0x8890a0 })
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, metalness: 0.1 })
     );
     road.rotation.x = -Math.PI / 2;
     road.position.set(0, 0, -230);
-    this.scene.add(road);
-    this.road = road;
+    this.scene.add(road); this.mapObjs.push(road); this.road = road;
 
-    // dark ground either side
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(400, 520),
-      new THREE.MeshStandardMaterial({ color: 0x08090e, roughness: 1 })
+      new THREE.MeshStandardMaterial({ color: this.buildingDay ? 0x2b2d33 : 0x08090e, roughness: 1 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(0, -0.02, -230);
-    this.scene.add(ground);
+    this.scene.add(ground); this.mapObjs.push(ground);
   }
 
   _buildRainSystem() {
@@ -258,9 +312,26 @@ export class RacingGame3D {
 
   start(opts) {
     if (this.running) return;
-    this.diff = DIFFICULTY[opts && opts.difficulty] || DIFFICULTY.medium;
+    opts = opts || {};
+
+    // resolve map + vehicle (default to the first of each)
+    const map = MAPS.find((m) => m.id === opts.map) || MAPS[0];
+    const veh = VEHICLES.find((v) => v.id === opts.vehicle) || VEHICLES[0];
+    this._applyMap(map);
+    this._loadVehicle(veh);
+
+    // difficulty modified by the vehicle's performance profile
+    const base = DIFFICULTY[opts.difficulty] || DIFFICULTY.medium;
+    this.diff = {
+      ...base,
+      startSpeed: base.startSpeed * (0.9 + 0.1 * veh.speed),
+      maxSpeed: base.maxSpeed * veh.speed,
+      accel: base.accel * veh.accel,
+    };
+    this.handlingMult = veh.handling;
+
     this._resetState();
-    this.practice = !!(opts && opts.practice);
+    this.practice = !!opts.practice;
     this.countdown = 3;
     if (this.gameoverScreen) this.gameoverScreen.hidden = true;
     this.running = true;
@@ -301,23 +372,29 @@ export class RacingGame3D {
     const d = 6 + Math.random() * 6; // < BLD_SPACING so buildings never overlap
     const geo = new THREE.BoxGeometry(w, h, d);
 
-    // procedural lit-window facade on EVERY vertical face (no black sides)
+    // window facade on EVERY vertical face (no black sides). Day = daylight-lit
+    // concrete/glass; night = emissive neon windows.
+    const day = this.buildingDay;
     const neon = Math.random() < 0.5 ? WIN_WARM : WIN_COOL;
     const cols = Math.max(3, Math.round(w / 2.0));
     const rows = Math.max(6, Math.round(h / 2.3));
-    const wt = makeWindowsTex(cols, rows, neon);
-    wt.anisotropy = this.maxAniso; // stop distant window shimmer / static
-    const winMat = new THREE.MeshStandardMaterial({ map: wt, emissive: 0xffffff, emissiveMap: wt, emissiveIntensity: 1.05, roughness: 0.85 });
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0x0a0c14, roughness: 0.95 });
+    const wt = makeWindowsTex(cols, rows, neon, day);
+    wt.anisotropy = this.maxAniso;
+    const winMat = day
+      ? new THREE.MeshStandardMaterial({ map: wt, roughness: 0.7, metalness: 0.15 })
+      : new THREE.MeshStandardMaterial({ map: wt, emissive: 0xffffff, emissiveMap: wt, emissiveIntensity: 1.05, roughness: 0.85 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: day ? 0x4a4d55 : 0x0a0c14, roughness: 0.95 });
 
     // BoxGeometry face order: +x,-x,+y,-y,+z,-z
     const inner = side < 0 ? 0 : 1; // road-facing face
     const mats = [winMat, winMat, roofMat, roofMat, winMat, winMat];
-    // ~45% of buildings get a realistic photo billboard on the road-facing face
-    if (this.bldTex && Math.random() < 0.45) {
+    // ~50% of buildings get a realistic city photo on the road-facing face
+    if (this.bldTex && this.bldTex.length && Math.random() < 0.5) {
       const tex = this.bldTex[Math.floor(Math.random() * this.bldTex.length)];
       tex.anisotropy = this.maxAniso;
-      mats[inner] = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.55, roughness: 0.8 });
+      mats[inner] = day
+        ? new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75, metalness: 0.1 })
+        : new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.55, roughness: 0.8 });
     }
 
     const node = new THREE.Mesh(geo, mats);
@@ -392,8 +469,8 @@ export class RacingGame3D {
     this.speed = Math.min(this.diff.maxSpeed, this.speed + this.diff.accel * dt);
     this.distance += this.speed * dt * 0.05;
 
-    // lateral movement with momentum (snappy enough to reach the gap in time)
-    const targetVX = steering * 4.4;
+    // lateral movement with momentum (scaled by the vehicle's handling)
+    const targetVX = steering * 4.4 * this.handlingMult;
     this.playerVX += (targetVX - this.playerVX) * Math.min(1, dt * 5.5);
     this.playerX += this.playerVX * dt / ROAD_HALF;
     if (this.playerX > PLAYER_MAX_X) { this.playerX = PLAYER_MAX_X; this.playerVX *= -0.2; }

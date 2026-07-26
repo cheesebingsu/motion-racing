@@ -66,37 +66,56 @@
 
       <!-- Start screen -->
       <div id="start-screen" class="screen screen--start">
-        <div class="screen__panel">
+        <div class="screen__panel wizard">
           <h2 class="screen__title">모션 레이싱</h2>
-          <ul class="screen__howto">
-            <li>양손으로 보이지 않는 <b>핸들</b>을 잡으세요</li>
-            <li>핸들을 <b>기울이면</b> 자동차가 좌우로 움직여요</li>
-            <li>자동차는 <b>스스로 가속</b>합니다 — 장애물을 피하세요</li>
-            <li>생명은 <b>3개</b>, 오래 버틸수록 거리(점수)가 올라가요</li>
-          </ul>
-          <p class="screen__tip">💡 손이 잘 안 잡히면 <b>뒤로 앉아</b> 두 손이 화면에 다 들어오게 하고, 주먹은 <b>살짝 펴서</b> 밝은 곳에서 하세요</p>
-          <div class="difficulty" id="difficulty" role="group" aria-label="난이도 선택">
-            <span class="difficulty__label">난이도</span>
-            <div class="difficulty__opts">
-              <button class="difficulty__btn" data-diff="easy">쉬움</button>
-              <button class="difficulty__btn is-selected" data-diff="medium">중간</button>
-              <button class="difficulty__btn" data-diff="hard">어려움</button>
+
+          <!-- Step 1: vehicle -->
+          <div class="wstep" data-step="1">
+            <div class="wstep__label">① 차량 선택</div>
+            <div id="vehicle-grid" class="pickgrid"></div>
+            <div class="wstep__nav">
+              <button class="btn btn--primary" data-next="2">다음 ▸</button>
             </div>
           </div>
 
-          <div class="setting">
-            <label class="setting__label" for="sensitivity">
-              핸들 감도 <span id="sensitivity-val" class="setting__val">1.0×</span>
-            </label>
-            <input id="sensitivity" class="setting__slider" type="range"
-                   min="0.5" max="2" step="0.1" value="1"
-                   aria-label="핸들 감도" />
+          <!-- Step 2: map/city -->
+          <div class="wstep" data-step="2" hidden>
+            <div class="wstep__label">② 맵 선택</div>
+            <div id="map-grid" class="pickgrid"></div>
+            <div class="wstep__nav">
+              <button class="btn btn--ghost" data-back="1">◂ 뒤로</button>
+              <button class="btn btn--primary" data-next="3">다음 ▸</button>
+            </div>
           </div>
-          <p class="screen__note">웹캠 권한이 필요합니다 · localhost 또는 https 에서 실행하세요</p>
-          <div class="screen__actions">
-            <button id="start-btn" class="btn btn--primary">게임 시작</button>
-            <button id="practice-btn" class="btn btn--ghost">연습 모드 · 장애물 없음</button>
-            <button id="fullscreen-btn" class="btn btn--ghost">⛶ 전체화면 (모바일 권장)</button>
+
+          <!-- Step 3: difficulty + settings + start -->
+          <div class="wstep" data-step="3" hidden>
+            <div class="wstep__label">③ 난이도 · 설정</div>
+            <div class="difficulty" id="difficulty" role="group" aria-label="난이도 선택">
+              <span class="difficulty__label">난이도</span>
+              <div class="difficulty__opts">
+                <button class="difficulty__btn" data-diff="easy">쉬움</button>
+                <button class="difficulty__btn is-selected" data-diff="medium">중간</button>
+                <button class="difficulty__btn" data-diff="hard">어려움</button>
+              </div>
+            </div>
+            <div class="setting">
+              <label class="setting__label" for="sensitivity">
+                핸들 감도 <span id="sensitivity-val" class="setting__val">1.0×</span>
+              </label>
+              <input id="sensitivity" class="setting__slider" type="range"
+                     min="0.5" max="2" step="0.1" value="1" aria-label="핸들 감도" />
+            </div>
+            <p class="screen__tip">💡 양손으로 핸들을 잡고 기울여 조종 · 손이 안 잡히면 뒤로 앉아 두 손을 화면에</p>
+            <p class="screen__note">웹캠 권한 필요 · localhost 또는 https 에서 실행</p>
+            <div class="wstep__nav">
+              <button class="btn btn--ghost" data-back="2">◂ 뒤로</button>
+              <button id="start-btn" class="btn btn--primary">게임 시작</button>
+            </div>
+            <div class="screen__actions">
+              <button id="practice-btn" class="btn btn--ghost">연습 모드 · 장애물 없음</button>
+              <button id="fullscreen-btn" class="btn btn--ghost">⛶ 전체화면 (모바일 권장)</button>
+            </div>
           </div>
         </div>
       </div>

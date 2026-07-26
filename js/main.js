@@ -8,7 +8,7 @@
 // it at http://localhost:PORT/ .
 
 import { createHandTracker } from './hand-tracking.js';
-import { RacingGame3D as RacingGame } from './game3d.js';
+import { RacingGame3D as RacingGame, VEHICLES, MAPS } from './game3d.js';
 
 // ---- DOM handles ----------------------------------------------------------
 const cam = document.getElementById('cam');
@@ -51,6 +51,54 @@ let starting = false;
 let lastPractice = false;     // remember the mode so restart replays it
 let selectedDifficulty = 'medium'; // 'easy' | 'medium' | 'hard'
 let selectedSensitivity = 1;  // steering sensitivity multiplier
+let selectedVehicle = VEHICLES[0].id;
+let selectedMap = MAPS[0].id;
+
+// ---- home wizard: vehicle / map selection ---------------------------------
+function statBar(label, v) {
+  const pct = Math.round(Math.min(1, Math.max(0, (v - 0.7) / 0.6)) * 100);
+  return '<div class="stat"><span>' + label + '</span><i><b style="width:' + pct + '%"></b></i></div>';
+}
+function buildVehicleGrid() {
+  const grid = document.getElementById('vehicle-grid');
+  if (!grid) return;
+  grid.innerHTML = VEHICLES.map((v) =>
+    '<button class="pickcard' + (v.id === selectedVehicle ? ' is-selected' : '') + '" data-veh="' + v.id + '">' +
+    '<span class="pickcard__name">' + v.name + '</span>' +
+    '<div class="pickcard__stats">' + statBar('속도', v.speed) + statBar('가속', v.accel) + statBar('조향', v.handling) + '</div>' +
+    '</button>'
+  ).join('');
+  grid.onclick = (e) => {
+    const c = e.target.closest('.pickcard'); if (!c) return;
+    selectedVehicle = c.dataset.veh;
+    for (const b of grid.querySelectorAll('.pickcard')) b.classList.toggle('is-selected', b === c);
+  };
+}
+function buildMapGrid() {
+  const grid = document.getElementById('map-grid');
+  if (!grid) return;
+  grid.innerHTML = MAPS.map((m) =>
+    '<button class="pickcard pickcard--map' + (m.id === selectedMap ? ' is-selected' : '') + '" data-map="' + m.id + '">' +
+    '<span class="pickcard__name">' + m.name + '</span>' +
+    '<span class="pickcard__badge">' + m.time + '</span>' +
+    '</button>'
+  ).join('');
+  grid.onclick = (e) => {
+    const c = e.target.closest('.pickcard'); if (!c) return;
+    selectedMap = c.dataset.map;
+    for (const b of grid.querySelectorAll('.pickcard')) b.classList.toggle('is-selected', b === c);
+  };
+}
+function showStep(n) {
+  for (const s of document.querySelectorAll('.wstep')) s.hidden = s.dataset.step !== String(n);
+}
+document.addEventListener('click', (e) => {
+  const nx = e.target.closest('[data-next]'); if (nx) { showStep(+nx.dataset.next); return; }
+  const bk = e.target.closest('[data-back]'); if (bk) { showStep(+bk.dataset.back); }
+});
+buildVehicleGrid();
+buildMapGrid();
+showStep(1);
 
 // ---- status helpers -------------------------------------------------------
 function setStatus(text, kind) {
@@ -92,7 +140,7 @@ async function beginGame(practice) {
   if (tracker.setSensitivity) tracker.setSensitivity(selectedSensitivity);
   if (!game) game = new RacingGame(canvas, tracker);
   game.stop();                       // in case a game was already running
-  game.start({ practice: lastPractice, difficulty: selectedDifficulty });
+  game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap });
   document.body.classList.add('playing'); // hide title chrome → maximise the game
 }
 
@@ -102,7 +150,7 @@ function restartGame() {
   if (!tracker) return; // shouldn't happen, but stay safe
   if (!game) game = new RacingGame(canvas, tracker);
   game.stop();
-  game.start({ practice: lastPractice, difficulty: selectedDifficulty });
+  game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap });
 }
 
 // ---- back to the main menu (used by the in-game menu button) --------------
