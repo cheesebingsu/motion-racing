@@ -25,6 +25,24 @@ const restartBtn = document.getElementById('restart-btn');
 const difficultyBox = document.getElementById('difficulty');
 const sensitivitySlider = document.getElementById('sensitivity');
 const sensitivityVal = document.getElementById('sensitivity-val');
+const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+// ---- fullscreen (hides the mobile browser bars that cover the top ~1/3) ----
+function enterFullscreen() {
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (req && !document.fullscreenElement) {
+    try { const p = req.call(el); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+  }
+  if (screen.orientation && screen.orientation.lock) {
+    try { const p = screen.orientation.lock('landscape'); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+  }
+}
+function toggleFullscreen() {
+  if (document.fullscreenElement) { if (document.exitFullscreen) document.exitFullscreen(); }
+  else enterFullscreen();
+}
+if (fullscreenBtn) fullscreenBtn.addEventListener('click', toggleFullscreen);
 
 // ---- shared state (tracker/camera is created once, reused across restarts) -
 let tracker = null;
@@ -45,6 +63,7 @@ function setStatus(text, kind) {
 // ---- start flow (works for both normal and practice mode) -----------------
 async function beginGame(practice) {
   if (starting) return;
+  enterFullscreen(); // within the click gesture → hides mobile browser bars
 
   lastPractice = !!practice;
   if (startScreen) startScreen.hidden = true;

@@ -8,7 +8,10 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>모션 레이싱 · Motion Racing</title>
   <link rel="stylesheet" href="style.css" />
   <!-- Three.js (real 3D) — import map so game3d.js can `import 'three'` -->
@@ -93,6 +96,7 @@
           <div class="screen__actions">
             <button id="start-btn" class="btn btn--primary">게임 시작</button>
             <button id="practice-btn" class="btn btn--ghost">연습 모드 · 장애물 없음</button>
+            <button id="fullscreen-btn" class="btn btn--ghost">⛶ 전체화면 (모바일 권장)</button>
           </div>
         </div>
       </div>

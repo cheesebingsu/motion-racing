@@ -16,14 +16,48 @@ const WZ = 0.05;                // game-speed unit -> metres/sec
 const START_LIVES = 3;
 const INVULN_TIME = 1.6;
 const NO_HANDS_GRACE = 0.4;
+const SIZE = 0.9;               // player + obstacles scaled to 90% (exactly 10% smaller)
 
+// Lane grid used by the guaranteed-gap spawner.
+const LANES = 5;
+const laneX = (i) => -LANE_SPAN + (i * 2 * LANE_SPAN) / (LANES - 1);
+
+// startSpeed/maxSpeed/accel: speed curve. rowGap: metres between obstacle rows.
+// density: how many lanes a row blocks (the guaranteed-free path lane is never one).
 const DIFFICULTY = {
-  easy:   { key: 'easy',   label: '쉬움',   startSpeed: 150, maxSpeed: 520,  accel: 5,  spawnBase: 1.25, burst: 1 },
-  medium: { key: 'medium', label: '중간',   startSpeed: 220, maxSpeed: 880,  accel: 9,  spawnBase: 0.75, burst: 1 },
-  hard:   { key: 'hard',   label: '어려움', startSpeed: 340, maxSpeed: 1150, accel: 14, spawnBase: 0.42, burst: 2 },
+  easy:   { key: 'easy',   label: '쉬움',   startSpeed: 150, maxSpeed: 520,  accel: 5,  rowGap: 72, density: 1, shift: 0.4 },
+  medium: { key: 'medium', label: '중간',   startSpeed: 220, maxSpeed: 880,  accel: 9,  rowGap: 56, density: 2, shift: 0.6 },
+  hard:   { key: 'hard',   label: '어려움', startSpeed: 340, maxSpeed: 1150, accel: 14, rowGap: 44, density: 3, shift: 0.85 },
 };
 
 const CAR_TINTS = [0xff4455, 0x44aaff, 0xffcc44, 0x66ff88, 0xffffff, 0xaa66ff];
+const WIN_WARM = ['#ffcf95', '#ffab5e', '#fff0cc', '#ffd27a'];
+const WIN_COOL = ['#66e0ff', '#ff6ad5', '#b088ff', '#88ffcc', '#5ea8ff'];
+
+// Procedural neon-window facade texture sized to a building, so every side of the
+// box reads as a lit 3D tower (no black faces).
+function makeWindowsTex(cols, rows, neon) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#0b0d16'; g.fillRect(0, 0, 256, 512);
+  const cw = 256 / cols, rh = 512 / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let col = 0; col < cols; col++) {
+      const lit = Math.random() < 0.42;
+      if (lit) {
+        g.fillStyle = neon[Math.floor(Math.random() * neon.length)];
+        g.globalAlpha = 0.55 + Math.random() * 0.45;
+      } else {
+        g.fillStyle = '#151a2b'; g.globalAlpha = 1;
+      }
+      g.fillRect(col * cw + cw * 0.18, r * rh + rh * 0.18, cw * 0.64, rh * 0.6);
+    }
+  }
+  g.globalAlpha = 1;
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 
 const loader = new GLTFLoader();
 function loadGLB(url) {
@@ -118,7 +152,7 @@ export class RacingGame3D {
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       car.position.sub(center);
-      const scale = 4.6 / Math.max(size.x, size.z);
+      const scale = (4.6 * SIZE) / Math.max(size.x, size.z);
       car.scale.setScalar(scale);
       // drop so wheels sit on the ground
       const box2 = new THREE.Box3().setFromObject(car);
@@ -199,8 +233,9 @@ export class RacingGame3D {
     this.carYaw = 0;
     this.carRoll = 0;
 
-    this.spawnTimer = 0;
     this.bldTimer = 0;
+    this.pathLane = Math.floor(LANES / 2); // guaranteed-free lane (starts centre)
+    this.distSinceRow = this.diff.rowGap * 0.5; // first row after a short run-up
 
     this.invuln = 0;
     this.gameOver = false;
@@ -257,54 +292,74 @@ export class RacingGame3D {
   }
 
   _spawnBuilding(side, zPos) {
-    if (!this.bldTex) return;
-    const tex = this.bldTex[Math.floor(Math.random() * this.bldTex.length)];
-    const h = 18 + Math.random() * 34;
-    const w = 8 + Math.random() * 8;
-    const d = 8 + Math.random() * 10;
+    const h = 20 + Math.random() * 40;
+    const w = 7 + Math.random() * 7;
+    const d = 7 + Math.random() * 8;
     const geo = new THREE.BoxGeometry(w, h, d);
-    const faceMat = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.7, roughness: 0.8 });
-    const sideMat = new THREE.MeshStandardMaterial({ color: 0x14182a, emissive: 0x0a0c18, emissiveIntensity: 0.4, roughness: 0.9 });
-    // face the street: +x side buildings show -x face, etc. BoxGeometry face order: +x,-x,+y,-y,+z,-z
-    const inner = side < 0 ? 0 : 1; // left buildings (x<0) show +x face(0); right show -x face(1)
-    const mats = [sideMat, sideMat, sideMat, sideMat, sideMat, sideMat];
-    mats[inner] = faceMat;
+
+    // procedural lit-window facade on EVERY vertical face (no black sides)
+    const neon = Math.random() < 0.5 ? WIN_WARM : WIN_COOL;
+    const cols = Math.max(3, Math.round(w / 2.0));
+    const rows = Math.max(6, Math.round(h / 2.3));
+    const wt = makeWindowsTex(cols, rows, neon);
+    const winMat = new THREE.MeshStandardMaterial({ map: wt, emissive: 0xffffff, emissiveMap: wt, emissiveIntensity: 1.05, roughness: 0.85 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x0a0c14, roughness: 0.95 });
+
+    // BoxGeometry face order: +x,-x,+y,-y,+z,-z
+    const inner = side < 0 ? 0 : 1; // road-facing face
+    const mats = [winMat, winMat, roofMat, roofMat, winMat, winMat];
+    // ~45% of buildings get a realistic photo billboard on the road-facing face
+    if (this.bldTex && Math.random() < 0.45) {
+      const tex = this.bldTex[Math.floor(Math.random() * this.bldTex.length)];
+      mats[inner] = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.55, roughness: 0.8 });
+    }
+
     const node = new THREE.Mesh(geo, mats);
-    const x = side * (ROAD_HALF + 1.5 + Math.random() * 5);
+    // keep the whole building OUTSIDE the road (inner edge just past the curb)
+    const x = side * (ROAD_HALF + w / 2 + 1.2);
     node.position.set(x, h / 2, zPos != null ? zPos : SPAWN_Z - Math.random() * 20);
     this.scene.add(node);
     this.buildings.push({ node });
   }
 
-  _spawnObstacle() {
-    const lane = (Math.random() * 1.5 - 0.75) * LANE_SPAN;
+  // Spawn a ROW of obstacles that always leaves one guaranteed-free path lane.
+  // The path lane shifts by at most 1 between rows, so a weavable path always exists.
+  _spawnRow() {
+    const d = this.diff;
+    if (Math.random() < d.shift) {
+      this.pathLane = clamp(this.pathLane + (Math.random() < 0.5 ? -1 : 1), 0, LANES - 1);
+    }
+    const others = [];
+    for (let i = 0; i < LANES; i++) if (i !== this.pathLane) others.push(i);
+    for (let i = others.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [others[i], others[j]] = [others[j], others[i]]; }
+    const blockN = Math.min(d.density, others.length);
+    for (let k = 0; k < blockN; k++) this._spawnObstacleAt(laneX(others[k]));
+  }
+
+  _spawnObstacleAt(x) {
     const r = Math.random();
-    let node, half, isCar = false;
+    let node, half;
     if (r < 0.5 && this.carModel) {
       node = this.carModel.clone(true);
-      node.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(0.8); } });
-      // tint via a coloured overlay isn't trivial on textured mesh; leave as-is (varied by scale)
+      node.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiplyScalar(0.85); } });
       node.rotation.y = -Math.PI / 2; // rear faces us (traffic driving the same way)
-      half = 1.2; isCar = true;
+      half = 1.2 * SIZE;
     } else if (r < 0.72) {
-      // cone
-      const m = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.1, 20), new THREE.MeshStandardMaterial({ color: 0xff6a1a, emissive: 0xff5510, emissiveIntensity: 0.3, roughness: 0.6 }));
-      m.position.y = 0.55; node = new THREE.Group(); node.add(m);
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.22, 20), new THREE.MeshStandardMaterial({ color: 0xffffff }));
-      band.position.y = 0.55; node.add(band);
-      half = 0.6;
+      const m = new THREE.Mesh(new THREE.ConeGeometry(0.5 * SIZE, 1.1 * SIZE, 20), new THREE.MeshStandardMaterial({ color: 0xff6a1a, emissive: 0xff5510, emissiveIntensity: 0.3, roughness: 0.6 }));
+      m.position.y = 0.55 * SIZE; node = new THREE.Group(); node.add(m);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.42 * SIZE, 0.5 * SIZE, 0.22 * SIZE, 20), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+      band.position.y = 0.55 * SIZE; node.add(band);
+      half = 0.6 * SIZE;
     } else {
-      // barrier: striped box
-      const m = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.1, 0.5), new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xaa4400, emissiveIntensity: 0.25, roughness: 0.7 }));
-      m.position.y = 0.75; node = new THREE.Group(); node.add(m);
-      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.4, 0.15), new THREE.MeshStandardMaterial({ color: 0x222 })); legL.position.set(-1.4, 0.7, 0); node.add(legL);
-      const legR = legL.clone(); legR.position.x = 1.4; node.add(legR);
-      half = 1.7;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(3.0 * SIZE, 1.1 * SIZE, 0.5 * SIZE), new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xaa4400, emissiveIntensity: 0.25, roughness: 0.7 }));
+      m.position.y = 0.75 * SIZE; node = new THREE.Group(); node.add(m);
+      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.4 * SIZE, 0.15), new THREE.MeshStandardMaterial({ color: 0x222222 })); legL.position.set(-1.35 * SIZE, 0.7 * SIZE, 0); node.add(legL);
+      const legR = legL.clone(); legR.position.x = 1.35 * SIZE; node.add(legR);
+      half = 1.55 * SIZE;
     }
-    node.position.x = lane; node.position.z = SPAWN_Z;
-    if (isCar) { /* car already positioned via group child */ }
+    node.position.x = x; node.position.z = SPAWN_Z;
     this.scene.add(node);
-    this.obstacles.push({ node, x: lane, z: SPAWN_Z, half, hit: false });
+    this.obstacles.push({ node, x, z: SPAWN_Z, half, hit: false });
   }
 
   // ---- update -----------------------------------------------------------
@@ -331,24 +386,24 @@ export class RacingGame3D {
     this.speed = Math.min(this.diff.maxSpeed, this.speed + this.diff.accel * dt);
     this.distance += this.speed * dt * 0.05;
 
-    // lateral movement with momentum
-    const targetVX = steering * 3.2;
-    this.playerVX += (targetVX - this.playerVX) * Math.min(1, dt * 5);
+    // lateral movement with momentum (snappy enough to reach the gap in time)
+    const targetVX = steering * 4.4;
+    this.playerVX += (targetVX - this.playerVX) * Math.min(1, dt * 5.5);
     this.playerX += this.playerVX * dt / ROAD_HALF;
     if (this.playerX > PLAYER_MAX_X) { this.playerX = PLAYER_MAX_X; this.playerVX *= -0.2; }
     if (this.playerX < -PLAYER_MAX_X) { this.playerX = -PLAYER_MAX_X; this.playerVX *= -0.2; }
 
-    // REAL 3D turn: yaw toward travel direction + banking roll
-    const yawTarget = -this.playerVX * 0.12;
+    // REAL 3D turn: gentle yaw toward travel direction + a very slight, stable lean
+    const yawTarget = -this.playerVX * 0.045;
     this.carYaw += (yawTarget - this.carYaw) * Math.min(1, dt * 6);
-    const rollTarget = this.playerVX * 0.05;
-    this.carRoll += (rollTarget - this.carRoll) * Math.min(1, dt * 6);
+    const rollTarget = this.playerVX * 0.012;
+    this.carRoll += (rollTarget - this.carRoll) * Math.min(1, dt * 5);
 
     const worldMove = this.speed * WZ * dt;
     this.roadTex.offset.y -= worldMove / 20;
 
     // buildings scroll toward camera (fill the whole street on the first frame)
-    if (this.bldTex && this.buildings.length === 0) this._prepopulate();
+    if (this.buildings.length === 0) this._prepopulate();
     this.bldTimer -= dt;
     if (this.bldTimer <= 0) { this.bldTimer = 0.16; this._spawnBuilding(Math.random() < 0.5 ? -1 : 1); }
     for (const b of this.buildings) b.node.position.z += worldMove;
@@ -356,11 +411,10 @@ export class RacingGame3D {
       if (this.buildings[i].node.position.z > 25) { this.scene.remove(this.buildings[i].node); this.buildings.splice(i, 1); }
     }
 
-    // obstacles
+    // obstacles — spawned in ROWS spaced by distance, each with a guaranteed gap
     if (!this.practice) {
-      this.spawnTimer -= dt;
-      const interval = Math.max(0.26, this.diff.spawnBase * (this.diff.startSpeed / this.speed) + 0.14);
-      if (this.spawnTimer <= 0) { this.spawnTimer = interval; for (let b = 0; b < this.diff.burst; b++) this._spawnObstacle(); }
+      this.distSinceRow += worldMove;
+      if (this.distSinceRow >= this.diff.rowGap) { this.distSinceRow = 0; this._spawnRow(); }
       for (const o of this.obstacles) { o.z += worldMove; o.node.position.z = o.z; }
       for (let i = this.obstacles.length - 1; i >= 0; i--) {
         if (this.obstacles[i].z > 15) { this.scene.remove(this.obstacles[i].node); this.obstacles.splice(i, 1); }
@@ -374,7 +428,7 @@ export class RacingGame3D {
     // apply car transform
     const carX = this.playerX * LANE_SPAN;
     this.carGroup.position.x = carX;
-    this.carGroup.position.y = Math.sin(performance.now() * 0.008) * 0.03; // subtle bob
+    this.carGroup.position.y = 0;           // planted — no vertical bob (stable)
     this.carGroup.rotation.y = this.carYaw; // steering yaw (base orientation set on the model)
     this.carGroup.rotation.z = this.carRoll;
 
@@ -402,7 +456,7 @@ export class RacingGame3D {
     const carX = this.playerX * LANE_SPAN;
     for (const o of this.obstacles) {
       if (o.hit) continue;
-      if (Math.abs(o.z) < 2.6 && Math.abs(o.x - carX) < (o.half + 0.95)) {
+      if (Math.abs(o.z) < 2.4 && Math.abs(o.x - carX) < (o.half + 0.95 * SIZE)) {
         o.hit = true;
         this.lives -= 1;
         this.invuln = INVULN_TIME;
