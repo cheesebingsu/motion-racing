@@ -9,6 +9,10 @@
 
 import { createHandTracker } from './hand-tracking.js';
 import { RacingGame3D as RacingGame, VEHICLES, MAPS } from './game3d.js';
+import {
+  getProfile, ensureProfile, addRun, submitBest,
+  getLocalBest, getHistory, fetchTop, fetchMyRank, remoteEnabled,
+} from './ranking.js';
 
 // ---- DOM handles ----------------------------------------------------------
 const cam = document.getElementById('cam');
@@ -159,7 +163,7 @@ async function beginGame(practice) {
   if (gameoverScreen) gameoverScreen.hidden = true;
 
   if (tracker.setSensitivity) tracker.setSensitivity(selectedSensitivity);
-  if (!game) game = new RacingGame(canvas, tracker);
+  if (!game) { game = new RacingGame(canvas, tracker); game.onGameOver = handleGameOver; }
   game.stop();                       // in case a game was already running
   game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap, view: selectedView });
   document.body.classList.add('playing'); // hide title chrome → maximise the game
@@ -169,7 +173,7 @@ async function beginGame(practice) {
 function restartGame() {
   if (gameoverScreen) gameoverScreen.hidden = true;
   if (!tracker) return; // shouldn't happen, but stay safe
-  if (!game) game = new RacingGame(canvas, tracker);
+  if (!game) { game = new RacingGame(canvas, tracker); game.onGameOver = handleGameOver; }
   game.stop();
   game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap, view: selectedView });
 }
@@ -207,6 +211,88 @@ if (viewBox) {
     }
   });
 }
+
+// ---- nickname modal (first launch + edit) ---------------------------------
+const nickModal = document.getElementById('nick-modal');
+const nickInput = document.getElementById('nick-input');
+const nickOk = document.getElementById('nick-ok');
+const nickEdit = document.getElementById('nick-edit');
+function openNickModal() {
+  const p = getProfile();
+  if (nickInput) nickInput.value = p ? p.nickname : '';
+  if (nickModal) nickModal.hidden = false;
+  if (nickInput) setTimeout(() => nickInput.focus(), 0);
+}
+function saveNick() {
+  const v = (nickInput.value || '').trim();
+  if (v.length < 1) { nickInput.focus(); return; }
+  ensureProfile(v);
+  if (nickModal) nickModal.hidden = true;
+}
+if (nickOk) nickOk.addEventListener('click', saveNick);
+if (nickInput) nickInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveNick(); });
+if (nickEdit) nickEdit.addEventListener('click', openNickModal);
+if (!getProfile()) openNickModal(); // first launch only
+
+// ---- game over → record score ---------------------------------------------
+let lastResult = null;
+function handleGameOver({ distance, difficulty, practice }) {
+  const badge = document.getElementById('rank-newbest');
+  if (practice) { if (badge) badge.hidden = true; lastResult = null; return; } // 연습모드 집계 제외
+  const { isBest } = addRun(difficulty, distance);
+  lastResult = { distance, difficulty, isBest };
+  if (badge) badge.hidden = !isBest;
+  if (isBest) submitBest(difficulty, distance); // 신기록만 원격 upsert
+}
+
+// ---- ranking page ---------------------------------------------------------
+const rankScreen = document.getElementById('rank-screen');
+const rankTabs = document.getElementById('rank-tabs');
+let rankDiff = 'medium';
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+async function renderRank(diff) {
+  rankDiff = diff;
+  for (const t of rankTabs.querySelectorAll('.rank__tab')) t.classList.toggle('is-selected', t.dataset.diff === diff);
+  const me = getProfile();
+  const globalEl = document.getElementById('rank-global');
+  const myrankEl = document.getElementById('rank-myrank');
+  const mineEl = document.getElementById('rank-mine');
+  const myBest = getLocalBest(diff);
+
+  // 내 기록 (로컬, 즉시)
+  const hist = getHistory(diff);
+  mineEl.innerHTML = hist.length
+    ? hist.map((r) => '<li' + (r.distance === myBest ? ' class="is-me"' : '') + '><span>·</span><b>' +
+        new Date(r.ts).toLocaleDateString() + '</b><em>' + r.distance + ' m</em></li>').join('')
+    : '<li class="rank__empty">이 난이도 기록이 없어요</li>';
+
+  // 전체 랭킹 (원격)
+  if (remoteEnabled()) {
+    globalEl.innerHTML = '<li class="rank__loading">불러오는 중...</li>';
+    myrankEl.textContent = '';
+    const rows = await fetchTop(diff, 100);
+    if (rankDiff !== diff) return; // 로딩 중 탭이 바뀜
+    globalEl.innerHTML = rows.length
+      ? rows.map((r, i) => '<li' + (me && r.player_id === me.playerId ? ' class="is-me"' : '') + '><span>' +
+          (i + 1) + '</span><b>' + escapeHtml(r.nickname) + '</b><em>' + r.distance + ' m</em></li>').join('')
+      : '<li class="rank__empty">아직 기록이 없어요</li>';
+    const myRank = await fetchMyRank(diff, myBest);
+    if (rankDiff === diff) myrankEl.textContent = myRank ? ('내 순위: ' + myRank + '위 · 최고 ' + myBest + ' m') : '';
+  } else {
+    globalEl.innerHTML = '<li class="rank__empty">전체 랭킹은 서버 연결 후 표시돼요</li>';
+    myrankEl.textContent = '';
+  }
+}
+function openRank(diff) { if (rankScreen) rankScreen.hidden = false; renderRank(diff || rankDiff); }
+if (rankTabs) rankTabs.addEventListener('click', (e) => { const b = e.target.closest('.rank__tab'); if (b) renderRank(b.dataset.diff); });
+const rankOpenBtn = document.getElementById('rank-open');
+const rankOpenOverBtn = document.getElementById('rank-open-over');
+const rankCloseBtn = document.getElementById('rank-close');
+if (rankOpenBtn) rankOpenBtn.addEventListener('click', () => openRank(selectedDifficulty));
+if (rankOpenOverBtn) rankOpenOverBtn.addEventListener('click', () => openRank(lastResult ? lastResult.difficulty : selectedDifficulty));
+if (rankCloseBtn) rankCloseBtn.addEventListener('click', () => { if (rankScreen) rankScreen.hidden = true; });
 
 // ---- sensitivity slider ---------------------------------------------------
 if (sensitivitySlider) {

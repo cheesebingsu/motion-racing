@@ -427,6 +427,7 @@ export class RacingGame3D {
 
     this._resetState();
     this.practice = !!opts.practice;
+    this.difficultyId = opts.difficulty || 'medium';
     this.countdown = 3;
     if (this.gameoverScreen) this.gameoverScreen.hidden = true;
     this.running = true;
@@ -697,6 +698,9 @@ export class RacingGame3D {
     this.gameOver = true;
     if (this.finalScore) this.finalScore.textContent = '최종 거리: ' + Math.floor(this.distance) + ' m';
     if (this.gameoverScreen) this.gameoverScreen.hidden = false;
+    if (typeof this.onGameOver === 'function') {
+      this.onGameOver({ distance: Math.floor(this.distance), difficulty: this.difficultyId, practice: !!this.practice });
+    }
   }
 
   _showCountdown() {

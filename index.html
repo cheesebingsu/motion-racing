@@ -19,7 +19,8 @@
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+      "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
     }
   }
   </script>
@@ -121,6 +122,8 @@
             </div>
             <div class="screen__actions">
               <button id="practice-btn" class="btn btn--ghost">연습 모드 · 장애물 없음</button>
+              <button id="rank-open" class="btn btn--ghost">🏆 랭킹</button>
+              <button id="nick-edit" class="btn btn--ghost">👤 닉네임 변경</button>
               <button id="fullscreen-btn" class="btn btn--ghost">⛶ 전체화면 (모바일 권장)</button>
             </div>
           </div>
@@ -131,8 +134,42 @@
       <div id="gameover-screen" class="screen screen--over" hidden>
         <div class="screen__panel">
           <h2 class="screen__title screen__title--over">게임 오버</h2>
+          <div id="rank-newbest" class="newbest" hidden>🎉 신기록!</div>
           <p id="final-score" class="screen__final">거리: 0 m</p>
           <button id="restart-btn" class="btn btn--primary">다시 시작</button>
+          <button id="rank-open-over" class="btn btn--ghost">🏆 랭킹 보기</button>
+        </div>
+      </div>
+
+      <!-- Nickname modal (first launch + edit) -->
+      <div id="nick-modal" class="modal" hidden>
+        <div class="modal__panel">
+          <h2 class="modal__title">닉네임을 입력하세요</h2>
+          <input id="nick-input" class="modal__input" maxlength="12" placeholder="1~12자" />
+          <button id="nick-ok" class="btn btn--primary">시작</button>
+          <p class="modal__hint">랭킹에 표시될 이름이에요 (나중에 변경 가능)</p>
+        </div>
+      </div>
+
+      <!-- Ranking page -->
+      <div id="rank-screen" class="screen screen--rank" hidden>
+        <div class="screen__panel rank">
+          <h2 class="screen__title">🏆 랭킹</h2>
+          <div class="rank__tabs" id="rank-tabs" role="group" aria-label="난이도 선택">
+            <button class="rank__tab is-selected" data-diff="easy">쉬움</button>
+            <button class="rank__tab" data-diff="medium">중간</button>
+            <button class="rank__tab" data-diff="hard">어려움</button>
+          </div>
+          <div class="rank__section">
+            <h3 class="rank__heading">전체 랭킹</h3>
+            <ol id="rank-global" class="rank__list"></ol>
+            <div class="rank__myrank" id="rank-myrank"></div>
+          </div>
+          <div class="rank__section">
+            <h3 class="rank__heading">내 기록</h3>
+            <ol id="rank-mine" class="rank__list"></ol>
+          </div>
+          <button id="rank-close" class="btn btn--ghost">닫기</button>
         </div>
       </div>
     </div>
