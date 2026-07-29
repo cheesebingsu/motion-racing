@@ -776,6 +776,110 @@ body.playing .stage {
 }
 @keyframes newbest-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
+/* ---------- Lobby (home) ---------- */
+.lobby__top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+.chip {
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 46vw;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(14, 18, 42, 0.7);
+  border: 1px solid var(--panel-border);
+}
+.chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip:hover { border-color: rgba(35, 224, 255, 0.6); }
+.lobby__icons { display: flex; gap: 8px; }
+.iconbtn {
+  font-family: inherit;
+  cursor: pointer;
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  font-size: 19px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 18, 42, 0.7);
+  border: 1px solid var(--panel-border);
+  transition: border-color 0.15s ease, transform 0.08s ease;
+}
+.iconbtn:hover { border-color: rgba(35, 224, 255, 0.6); }
+.iconbtn:active { transform: scale(0.94); }
+.lobby__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  padding: 0 16px;
+}
+.lobby__title {
+  margin: 0;
+  font-size: clamp(28px, 8cqw, 46px);
+  font-weight: 800;
+  letter-spacing: 3px;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.lobby__sub { margin: 0 0 6px; font-size: 14px; color: var(--text-dim); }
+.btn--play { font-size: 20px; padding: 16px 56px; letter-spacing: 2px; }
+
+/* ---------- Wizard head (progress + close) ---------- */
+.wizard__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 16px;
+  min-height: 26px;
+}
+.wizard__x {
+  position: absolute;
+  right: 0; top: 0;
+  font-family: inherit;
+  cursor: pointer;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--panel-border);
+}
+.wizard__x:hover { color: var(--text); border-color: rgba(35, 224, 255, 0.6); }
+.wizard__progress { display: flex; gap: 8px; }
+.wizard__progress > i {
+  width: 22px; height: 5px;
+  border-radius: 999px;
+  background: rgba(122, 92, 255, 0.25);
+  transition: background 0.2s ease;
+}
+.wizard__progress > i.on {
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
+  box-shadow: 0 0 8px rgba(35, 224, 255, 0.5);
+}
+
+/* ---------- Nickname / settings screens ---------- */
+.screen__sub { margin: -2px 0 16px; font-size: 12.5px; color: var(--text-dim); }
+.screen--nick .modal__input { margin-bottom: 14px; }
+.screen--nick .btn, .screen--settings .btn { width: 100%; margin-top: 4px; }
+.screen--settings .setting { margin-bottom: 16px; }
+
 /* Hidden unless a phone is held in portrait (see media query below). */
 .rotate-hint { display: none; }
 

@@ -20,11 +20,23 @@ const camOverlay = document.getElementById('cam-overlay');
 const canvas = document.getElementById('game-canvas');
 const status = document.getElementById('status');
 const wheel = document.getElementById('wheel');
-const startScreen = document.getElementById('start-screen');
+const lobbyScreen = document.getElementById('lobby-screen');
+const setupScreen = document.getElementById('setup-screen');
+const settingsScreen = document.getElementById('settings-screen');
+const nickScreen = document.getElementById('nick-screen');
 const startBtn = document.getElementById('start-btn');
 const practiceBtn = document.getElementById('practice-btn');
 const menuBtn = document.getElementById('menu-btn');
 const gameoverScreen = document.getElementById('gameover-screen');
+
+// ---- screen navigation (only one screen visible at a time) -----------------
+const rankScreenEl = document.getElementById('rank-screen');
+const screenEls = {
+  lobby: lobbyScreen, setup: setupScreen, settings: settingsScreen,
+  nick: nickScreen, rank: rankScreenEl, gameover: gameoverScreen,
+};
+function hideScreens() { for (const k in screenEls) if (screenEls[k]) screenEls[k].hidden = true; }
+function goto(name) { hideScreens(); if (screenEls[name]) screenEls[name].hidden = false; }
 const restartBtn = document.getElementById('restart-btn');
 const difficultyBox = document.getElementById('difficulty');
 const sensitivitySlider = document.getElementById('sensitivity');
@@ -100,20 +112,31 @@ function buildMapGrid() {
     for (const b of grid.querySelectorAll('.pickcard')) b.classList.toggle('is-selected', b === c);
   };
 }
+const wizardProgress = document.getElementById('wizard-progress');
 function showStep(n) {
   for (const s of document.querySelectorAll('.wstep')) s.hidden = s.dataset.step !== String(n);
+  if (wizardProgress) {
+    const dots = wizardProgress.querySelectorAll('i');
+    dots.forEach((d, i) => d.classList.toggle('on', i < n));
+  }
   // On the last step, request the camera NOW (this click is a user gesture and we're
   // not fullscreen yet, so the permission popup is visible). By the time they press
   // 게임 시작, access is already granted and fullscreen can kick in cleanly.
   if (n === 3) ensureTracker();
 }
+// wizard next/back navigation (only inside the setup screen)
 document.addEventListener('click', (e) => {
   const nx = e.target.closest('[data-next]'); if (nx) { showStep(+nx.dataset.next); return; }
   const bk = e.target.closest('[data-back]'); if (bk) { showStep(+bk.dataset.back); }
 });
 buildVehicleGrid();
 buildMapGrid();
-showStep(1);
+
+// enter the setup wizard from the lobby
+const playBtn = document.getElementById('play-btn');
+const setupExit = document.getElementById('setup-exit');
+if (playBtn) playBtn.addEventListener('click', () => { showStep(1); goto('setup'); });
+if (setupExit) setupExit.addEventListener('click', () => goto('lobby'));
 
 // ---- status helpers -------------------------------------------------------
 function setStatus(text, kind) {
@@ -159,8 +182,7 @@ async function beginGame(practice) {
 
   // 2) Access granted → now go fullscreen (still inside the click's activation).
   enterFullscreen();
-  if (startScreen) startScreen.hidden = true;
-  if (gameoverScreen) gameoverScreen.hidden = true;
+  hideScreens(); // leave only the game visible
 
   if (tracker.setSensitivity) tracker.setSensitivity(selectedSensitivity);
   if (!game) { game = new RacingGame(canvas, tracker); game.onGameOver = handleGameOver; }
@@ -171,21 +193,22 @@ async function beginGame(practice) {
 
 // ---- restart flow (reuse the same tracker / camera + last mode) ------------
 function restartGame() {
-  if (gameoverScreen) gameoverScreen.hidden = true;
+  hideScreens();
   if (!tracker) return; // shouldn't happen, but stay safe
   if (!game) { game = new RacingGame(canvas, tracker); game.onGameOver = handleGameOver; }
   game.stop();
   game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap, view: selectedView });
 }
 
-// ---- back to the main menu (used by the in-game menu button) --------------
+// ---- back to the lobby (used by in-game menu button + game-over 홈) ---------
 function toMenu() {
   if (game) game.stop();
-  if (gameoverScreen) gameoverScreen.hidden = true;
   setStatus('');
-  document.body.classList.remove('playing'); // bring the title chrome back
-  if (startScreen) startScreen.hidden = false;
+  document.body.classList.remove('playing'); // bring the chrome back
+  goto('lobby');
 }
+const gameoverHome = document.getElementById('gameover-home');
+if (gameoverHome) gameoverHome.addEventListener('click', toMenu);
 
 // ---- difficulty selector --------------------------------------------------
 if (difficultyBox) {
@@ -212,27 +235,46 @@ if (viewBox) {
   });
 }
 
-// ---- nickname modal (first launch + edit) ---------------------------------
-const nickModal = document.getElementById('nick-modal');
+// ---- nickname (first-launch welcome + later edit) -------------------------
 const nickInput = document.getElementById('nick-input');
 const nickOk = document.getElementById('nick-ok');
-const nickEdit = document.getElementById('nick-edit');
-function openNickModal() {
+const nickTitle = document.getElementById('nick-title');
+const nickSub = document.getElementById('nick-sub');
+const profileChip = document.getElementById('profile-chip');
+const profileName = document.getElementById('profile-name');
+function refreshProfileName() {
   const p = getProfile();
+  if (profileName) profileName.textContent = p ? p.nickname : '플레이어';
+}
+function showNick(editing) {
+  const p = getProfile();
+  if (nickTitle) nickTitle.textContent = editing ? '닉네임 변경' : '환영합니다 👋';
+  if (nickSub) nickSub.textContent = editing ? '새 닉네임을 입력하세요' : '랭킹에 표시될 닉네임을 정해주세요';
+  if (nickOk) nickOk.textContent = editing ? '저장' : '시작';
   if (nickInput) nickInput.value = p ? p.nickname : '';
-  if (nickModal) nickModal.hidden = false;
+  goto('nick');
   if (nickInput) setTimeout(() => nickInput.focus(), 0);
 }
 function saveNick() {
   const v = (nickInput.value || '').trim();
   if (v.length < 1) { nickInput.focus(); return; }
   ensureProfile(v);
-  if (nickModal) nickModal.hidden = true;
+  refreshProfileName();
+  goto('lobby');
 }
 if (nickOk) nickOk.addEventListener('click', saveNick);
 if (nickInput) nickInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveNick(); });
-if (nickEdit) nickEdit.addEventListener('click', openNickModal);
-if (!getProfile()) openNickModal(); // first launch only
+if (profileChip) profileChip.addEventListener('click', () => showNick(true));
+
+// ---- settings screen ------------------------------------------------------
+const settingsOpenBtn = document.getElementById('settings-open');
+const settingsCloseBtn = document.getElementById('settings-close');
+if (settingsOpenBtn) settingsOpenBtn.addEventListener('click', () => goto('settings'));
+if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', () => goto('lobby'));
+
+// ---- initial screen: lobby if we know the player, else welcome ------------
+refreshProfileName();
+if (getProfile()) goto('lobby'); else showNick(false);
 
 // ---- game over → record score ---------------------------------------------
 let lastResult = null;
@@ -246,7 +288,6 @@ function handleGameOver({ distance, difficulty, practice }) {
 }
 
 // ---- ranking page ---------------------------------------------------------
-const rankScreen = document.getElementById('rank-screen');
 const rankTabs = document.getElementById('rank-tabs');
 let rankDiff = 'medium';
 function escapeHtml(s) {
@@ -285,14 +326,15 @@ async function renderRank(diff) {
     myrankEl.textContent = '';
   }
 }
-function openRank(diff) { if (rankScreen) rankScreen.hidden = false; renderRank(diff || rankDiff); }
+let rankReturn = 'lobby';
+function openRank(diff, from) { rankReturn = from || 'lobby'; goto('rank'); renderRank(diff || rankDiff); }
 if (rankTabs) rankTabs.addEventListener('click', (e) => { const b = e.target.closest('.rank__tab'); if (b) renderRank(b.dataset.diff); });
 const rankOpenBtn = document.getElementById('rank-open');
 const rankOpenOverBtn = document.getElementById('rank-open-over');
 const rankCloseBtn = document.getElementById('rank-close');
-if (rankOpenBtn) rankOpenBtn.addEventListener('click', () => openRank(selectedDifficulty));
-if (rankOpenOverBtn) rankOpenOverBtn.addEventListener('click', () => openRank(lastResult ? lastResult.difficulty : selectedDifficulty));
-if (rankCloseBtn) rankCloseBtn.addEventListener('click', () => { if (rankScreen) rankScreen.hidden = true; });
+if (rankOpenBtn) rankOpenBtn.addEventListener('click', () => openRank(selectedDifficulty, 'lobby'));
+if (rankOpenOverBtn) rankOpenOverBtn.addEventListener('click', () => openRank(lastResult ? lastResult.difficulty : selectedDifficulty, 'gameover'));
+if (rankCloseBtn) rankCloseBtn.addEventListener('click', () => goto(rankReturn));
 
 // ---- sensitivity slider ---------------------------------------------------
 if (sensitivitySlider) {

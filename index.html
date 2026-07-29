@@ -27,9 +27,6 @@
 </head>
 <body>
   <div class="app">
-    <h1 class="app__title">모션 레이싱</h1>
-    <p class="app__subtitle">양손으로 핸들을 잡고 기울여 조종하세요</p>
-
     <!-- .stage: relative wrapper; canvas + overlays stack here -->
     <div class="stage" id="stage">
       <canvas id="game-canvas" width="960" height="540" class="stage__canvas"></canvas>
@@ -65,14 +62,34 @@
       <!-- Status line -->
       <div id="status" class="status"></div>
 
-      <!-- Start screen -->
-      <div id="start-screen" class="screen screen--start">
+      <!-- Lobby (home) -->
+      <div id="lobby-screen" class="screen screen--lobby" hidden>
+        <div class="lobby__top">
+          <button id="profile-chip" class="chip">👤 <span id="profile-name">플레이어</span></button>
+          <div class="lobby__icons">
+            <button id="rank-open" class="iconbtn" aria-label="랭킹">🏆</button>
+            <button id="settings-open" class="iconbtn" aria-label="설정">⚙️</button>
+          </div>
+        </div>
+        <div class="lobby__center">
+          <h2 class="lobby__title">모션 레이싱</h2>
+          <p class="lobby__sub">양손으로 핸들을 잡고 기울여 조종하세요</p>
+          <button id="play-btn" class="btn btn--primary btn--play">▶ 플레이</button>
+          <button id="practice-btn" class="btn btn--ghost">연습 모드 · 장애물 없음</button>
+        </div>
+      </div>
+
+      <!-- Setup wizard (vehicle → map → difficulty/view) -->
+      <div id="setup-screen" class="screen screen--setup" hidden>
         <div class="screen__panel wizard">
-          <h2 class="screen__title">모션 레이싱</h2>
+          <div class="wizard__head">
+            <button id="setup-exit" class="wizard__x" aria-label="닫기">✕</button>
+            <div class="wizard__progress" id="wizard-progress"><i></i><i></i><i></i></div>
+          </div>
 
           <!-- Step 1: vehicle -->
           <div class="wstep" data-step="1">
-            <div class="wstep__label">① 차량 선택</div>
+            <div class="wstep__label">차량 선택</div>
             <div id="vehicle-grid" class="pickgrid"></div>
             <div class="wstep__nav">
               <button class="btn btn--primary" data-next="2">다음 ▸</button>
@@ -81,7 +98,7 @@
 
           <!-- Step 2: map/city -->
           <div class="wstep" data-step="2" hidden>
-            <div class="wstep__label">② 맵 선택</div>
+            <div class="wstep__label">맵 선택</div>
             <div id="map-grid" class="pickgrid"></div>
             <div class="wstep__nav">
               <button class="btn btn--ghost" data-back="1">◂ 뒤로</button>
@@ -89,9 +106,9 @@
             </div>
           </div>
 
-          <!-- Step 3: difficulty + settings + start -->
+          <!-- Step 3: difficulty + view -->
           <div class="wstep" data-step="3" hidden>
-            <div class="wstep__label">③ 난이도 · 설정</div>
+            <div class="wstep__label">난이도 · 시점</div>
             <div class="difficulty" id="difficulty" role="group" aria-label="난이도 선택">
               <span class="difficulty__label">난이도</span>
               <div class="difficulty__opts">
@@ -107,26 +124,29 @@
                 <button class="difficulty__btn" data-view="1st">1인칭 (운전석)</button>
               </div>
             </div>
-            <div class="setting">
-              <label class="setting__label" for="sensitivity">
-                핸들 감도 <span id="sensitivity-val" class="setting__val">1.0×</span>
-              </label>
-              <input id="sensitivity" class="setting__slider" type="range"
-                     min="0.5" max="2" step="0.1" value="1" aria-label="핸들 감도" />
-            </div>
             <p class="screen__tip">💡 양손으로 핸들을 잡고 기울여 조종 · 손이 안 잡히면 뒤로 앉아 두 손을 화면에</p>
-            <p class="screen__note">웹캠 권한 필요 · localhost 또는 https 에서 실행</p>
             <div class="wstep__nav">
               <button class="btn btn--ghost" data-back="2">◂ 뒤로</button>
               <button id="start-btn" class="btn btn--primary">게임 시작</button>
             </div>
-            <div class="screen__actions">
-              <button id="practice-btn" class="btn btn--ghost">연습 모드 · 장애물 없음</button>
-              <button id="rank-open" class="btn btn--ghost">🏆 랭킹</button>
-              <button id="nick-edit" class="btn btn--ghost">👤 닉네임 변경</button>
-              <button id="fullscreen-btn" class="btn btn--ghost">⛶ 전체화면 (모바일 권장)</button>
-            </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div id="settings-screen" class="screen screen--settings" hidden>
+        <div class="screen__panel">
+          <h2 class="screen__title">⚙️ 설정</h2>
+          <div class="setting">
+            <label class="setting__label" for="sensitivity">
+              핸들 감도 <span id="sensitivity-val" class="setting__val">1.0×</span>
+            </label>
+            <input id="sensitivity" class="setting__slider" type="range"
+                   min="0.5" max="2" step="0.1" value="1" aria-label="핸들 감도" />
+          </div>
+          <button id="fullscreen-btn" class="btn btn--ghost">⛶ 전체화면 (모바일 권장)</button>
+          <p class="screen__note">웹캠 권한 필요 · localhost 또는 https 에서 실행</p>
+          <button id="settings-close" class="btn btn--ghost">닫기</button>
         </div>
       </div>
 
@@ -137,17 +157,20 @@
           <div id="rank-newbest" class="newbest" hidden>🎉 신기록!</div>
           <p id="final-score" class="screen__final">거리: 0 m</p>
           <button id="restart-btn" class="btn btn--primary">다시 시작</button>
-          <button id="rank-open-over" class="btn btn--ghost">🏆 랭킹 보기</button>
+          <div class="screen__actions">
+            <button id="rank-open-over" class="btn btn--ghost">🏆 랭킹 보기</button>
+            <button id="gameover-home" class="btn btn--ghost">🏠 홈으로</button>
+          </div>
         </div>
       </div>
 
-      <!-- Nickname modal (first launch + edit) -->
-      <div id="nick-modal" class="modal" hidden>
-        <div class="modal__panel">
-          <h2 class="modal__title">닉네임을 입력하세요</h2>
+      <!-- Nickname screen (first launch welcome + later edit) -->
+      <div id="nick-screen" class="screen screen--nick" hidden>
+        <div class="screen__panel">
+          <h2 class="screen__title" id="nick-title">환영합니다 👋</h2>
+          <p class="screen__sub" id="nick-sub">랭킹에 표시될 닉네임을 정해주세요</p>
           <input id="nick-input" class="modal__input" maxlength="12" placeholder="1~12자" />
           <button id="nick-ok" class="btn btn--primary">시작</button>
-          <p class="modal__hint">랭킹에 표시될 이름이에요 (나중에 변경 가능)</p>
         </div>
       </div>
 
