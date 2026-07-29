@@ -371,6 +371,7 @@ export class RacingGame3D {
     this.running = false;
     this.rafId = 0;
     this.lastTime = 0;
+    this.menuPaused = false;
 
     this.speed = this.diff.startSpeed;
     this.distance = 0;
@@ -450,6 +451,16 @@ export class RacingGame3D {
     this._update(dt);
     this._render();
     if (this.running) this.rafId = requestAnimationFrame(this._loop);
+  }
+
+  // Manual pause (menu button). Freezes the game without ending it.
+  pauseForMenu() { if (this.running && !this.gameOver) this.menuPaused = true; }
+  // Resume from the pause menu with a short ready-countdown + recalibrate.
+  resumeFromMenu() {
+    if (!this.menuPaused) return;
+    this.menuPaused = false;
+    this.countdown = 3;
+    if (this.pauseEl) this.pauseEl.hidden = true;
   }
 
   // ---- spawns -----------------------------------------------------------
@@ -562,6 +573,7 @@ export class RacingGame3D {
 
   // ---- update -----------------------------------------------------------
   _update(dt) {
+    if (this.menuPaused) return; // manual pause (menu open) — freeze everything, keep rendering
     if (this.countdown > 0) {
       this.countdown -= dt;
       if (this.countdown <= 0 && typeof this.tracker.calibrate === 'function') this.tracker.calibrate();

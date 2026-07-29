@@ -156,10 +156,20 @@
           <h2 class="screen__title screen__title--over">게임 오버</h2>
           <div id="rank-newbest" class="newbest" hidden>🎉 신기록!</div>
           <p id="final-score" class="screen__final">거리: 0 m</p>
-          <button id="restart-btn" class="btn btn--primary">다시 시작</button>
           <div class="screen__actions">
+            <button id="gameover-home" class="btn btn--primary">🏠 로비로 가기</button>
             <button id="rank-open-over" class="btn btn--ghost">🏆 랭킹 보기</button>
-            <button id="gameover-home" class="btn btn--ghost">🏠 홈으로</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pause menu (in-game ⏸ 메뉴 button) — pause only, no settings changes -->
+      <div id="pausemenu-screen" class="screen screen--pause" hidden>
+        <div class="screen__panel">
+          <h2 class="screen__title">⏸ 일시정지</h2>
+          <div class="screen__actions">
+            <button id="resume-btn" class="btn btn--primary">▶ 이어서 하기</button>
+            <button id="lobby-btn" class="btn btn--ghost">🏠 로비로 가기</button>
           </div>
         </div>
       </div>

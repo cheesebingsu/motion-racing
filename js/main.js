@@ -37,7 +37,6 @@ const screenEls = {
 };
 function hideScreens() { for (const k in screenEls) if (screenEls[k]) screenEls[k].hidden = true; }
 function goto(name) { hideScreens(); if (screenEls[name]) screenEls[name].hidden = false; }
-const restartBtn = document.getElementById('restart-btn');
 const difficultyBox = document.getElementById('difficulty');
 const sensitivitySlider = document.getElementById('sensitivity');
 const sensitivityVal = document.getElementById('sensitivity-val');
@@ -191,19 +190,12 @@ async function beginGame(practice) {
   document.body.classList.add('playing'); // hide title chrome → maximise the game
 }
 
-// ---- restart flow (reuse the same tracker / camera + last mode) ------------
-function restartGame() {
-  hideScreens();
-  if (!tracker) return; // shouldn't happen, but stay safe
-  if (!game) { game = new RacingGame(canvas, tracker); game.onGameOver = handleGameOver; }
-  game.stop();
-  game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap, view: selectedView });
-}
-
-// ---- back to the lobby (used by in-game menu button + game-over 홈) ---------
+// ---- back to the lobby (used by pause-menu + game-over) --------------------
 function toMenu() {
   if (game) game.stop();
   setStatus('');
+  const pm = document.getElementById('pausemenu-screen');
+  if (pm) pm.hidden = true;
   document.body.classList.remove('playing'); // bring the chrome back
   goto('lobby');
 }
@@ -347,11 +339,26 @@ if (sensitivitySlider) {
   applySensitivity(); // initialise label from the default value
 }
 
+// ---- pause menu (in-game ⏸ 메뉴 → pause only; resume / go to lobby) --------
+const pausemenuScreen = document.getElementById('pausemenu-screen');
+const resumeBtn = document.getElementById('resume-btn');
+const lobbyBtn = document.getElementById('lobby-btn');
+function openPauseMenu() {
+  if (!game || !game.running || game.gameOver) return;
+  if (game.pauseForMenu) game.pauseForMenu();
+  if (pausemenuScreen) pausemenuScreen.hidden = false;
+}
+function resumeGame() {
+  if (pausemenuScreen) pausemenuScreen.hidden = true;
+  if (game && game.resumeFromMenu) game.resumeFromMenu();
+}
+if (resumeBtn) resumeBtn.addEventListener('click', resumeGame);
+if (lobbyBtn) lobbyBtn.addEventListener('click', () => { if (pausemenuScreen) pausemenuScreen.hidden = true; toMenu(); });
+
 // ---- wire buttons ---------------------------------------------------------
 if (startBtn) startBtn.addEventListener('click', () => beginGame(false));
 if (practiceBtn) practiceBtn.addEventListener('click', () => beginGame(true));
-if (restartBtn) restartBtn.addEventListener('click', restartGame);
-if (menuBtn) menuBtn.addEventListener('click', toMenu);
+if (menuBtn) menuBtn.addEventListener('click', openPauseMenu);
 
 // ---- UI loop: rotate the wheel + warn when hands aren't detected ----------
 function uiLoop() {
