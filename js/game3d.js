@@ -206,6 +206,33 @@ function normalFromHeight(heightCanvas, strength) {
   return t;
 }
 
+// ---- special-obstacle meshes (procedural, cheap) --------------------------
+function makePed() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.6, 4, 8),
+    new THREE.MeshStandardMaterial({ color: 0xe0553f, roughness: 0.85 }));
+  body.position.y = 0.78; g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0xf0c8a0, roughness: 0.7 }));
+  head.position.y = 1.32; g.add(head);
+  g.userData.disp = true;
+  return g;
+}
+function makeBike() {
+  const g = new THREE.Group();
+  const wheelGeo = new THREE.TorusGeometry(0.32, 0.055, 8, 16);
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
+  for (const x of [-0.5, 0.5]) { const w = new THREE.Mesh(wheelGeo, wheelMat); w.position.set(x, 0.32, 0); g.add(w); }
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.1, 0.1),
+    new THREE.MeshStandardMaterial({ color: 0x3a9bd6, roughness: 0.5, metalness: 0.3 }));
+  frame.position.y = 0.5; g.add(frame);
+  const rider = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.5, 4, 8),
+    new THREE.MeshStandardMaterial({ color: 0xe0553f, roughness: 0.85 }));
+  rider.position.y = 1.0; g.add(rider);
+  g.userData.disp = true;
+  return g;
+}
+
 export class RacingGame3D {
   constructor(canvas, tracker) {
     this.canvas = canvas;
@@ -555,6 +582,17 @@ export class RacingGame3D {
     // path lane is always physically reachable (never tighten past this).
     this.rowGapFloor = Math.min(this.diff.rowGap, this.diff.maxSpeed * 0.048);
 
+    // Special obstacles (oncoming / crossing) after 3km. Corridor invariant:
+    // pathLane is pinned + static is thinned around specials → a clear path always
+    // exists. nextSpecialDist = distance of the next special event.
+    this.nextSpecialDist = 3000 + Math.random() * 900;
+    this.pathPinned = false;        // while true, pathLane doesn't shift (oncoming active)
+    this.staticSuppressUntil = 0;   // distance until static rows are thinned/suppressed
+    this.staticThin = 0;            // how many lanes to drop from a row during the window
+    if (this.crossWarn && this.crossWarn.mesh) this.scene.remove(this.crossWarn.mesh); // clean any leftover telegraph
+    this.crossWarn = null;          // pending crossing telegraph { mesh, z, t, fromLeft }
+    this.pathPinned = false;
+
     this.invuln = 0;
     this.gameOver = false;
     this.practice = false;
@@ -693,16 +731,87 @@ export class RacingGame3D {
   // The path lane shifts by at most 1 between rows, so a weavable path always exists.
   _spawnRow() {
     const d = this.diff;
-    if (Math.random() < d.shift) {
+    // pathLane holds still while a special is active (keeps the corridor away from it)
+    if (!this.pathPinned && Math.random() < d.shift) {
       this.pathLane = clamp(this.pathLane + (Math.random() < 0.5 ? -1 : 1), 0, LANES - 1);
     }
     const others = [];
     for (let i = 0; i < LANES; i++) if (i !== this.pathLane) others.push(i);
     for (let i = others.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [others[i], others[j]] = [others[j], others[i]]; }
     // escalate density, but cap at LANES-1 so pathLane (the guaranteed활로) is never blocked
-    const effDensity = Math.min(LANES - 1, d.density + this.escLevel);
+    let effDensity = Math.min(LANES - 1, d.density + this.escLevel);
+    // thin (or fully suppress) static rows around a special event → room for it
+    if (this.distance < this.staticSuppressUntil) effDensity = Math.max(0, effDensity - this.staticThin);
     const blockN = Math.min(effDensity, others.length);
     for (let k = 0; k < blockN; k++) this._spawnObstacleAt(laneX(others[k]));
+  }
+
+  // ---- special obstacles (oncoming / crossing), past 3km --------------------
+  _hasSpecial() {
+    return !!this.crossWarn || this.obstacles.some((o) => o.kind === 'oncoming' || o.kind === 'crossing');
+  }
+  _updateSpecials(dt, worldMove) {
+    // advance a pending crossing telegraph; spawn the crosser when it fires
+    if (this.crossWarn) {
+      const cw = this.crossWarn;
+      cw.z += worldMove; cw.mesh.position.z = cw.z;
+      cw.t -= dt;
+      cw.mesh.material.opacity = 0.35 + 0.55 * Math.abs(Math.sin(cw.t * 14)); // flash
+      if (cw.t <= 0) {
+        this._spawnCrossingEntity(cw);
+        this.scene.remove(cw.mesh); cw.mesh.geometry.dispose(); cw.mesh.material.dispose();
+        this.crossWarn = null;
+      }
+    }
+    // release the pathLane pin once no oncoming vehicle remains
+    if (this.pathPinned && !this.obstacles.some((o) => o.kind === 'oncoming')) this.pathPinned = false;
+    // schedule the next special (one at a time)
+    if (this.distance >= this.nextSpecialDist && !this._hasSpecial()) {
+      if (Math.random() < 0.5) this._spawnOncoming(); else this._startCrossingWarn();
+      this.nextSpecialDist = this.distance + 900 + Math.random() * 1000;
+    }
+  }
+  _oncomingCar() {
+    if (this.trafficVariants && this.trafficVariants.length) {
+      const c = this.trafficVariants[(Math.random() * this.trafficVariants.length) | 0].clone(true);
+      c.rotation.y = Math.PI / 2; // front faces the camera (driving the wrong way)
+      return c;
+    }
+    return makeBike();
+  }
+  _spawnOncoming() {
+    // choose a lane ≠ pathLane and PIN pathLane so the corridor never meets it
+    const lanes = [];
+    for (let i = 0; i < LANES; i++) if (i !== this.pathLane) lanes.push(i);
+    const lane = lanes[(Math.random() * lanes.length) | 0];
+    this.pathPinned = true;
+    this.staticSuppressUntil = this.distance + 55; this.staticThin = 1; // thin static a touch
+    const bike = Math.random() < 0.5;
+    const node = bike ? makeBike() : this._oncomingCar();
+    if (bike) node.rotation.y = Math.PI / 2;
+    node.position.x = laneX(lane); node.position.z = SPAWN_Z - 30; // keep y (car grounded / mesh at 0)
+    this.scene.add(node);
+    this.obstacles.push({ node, x: laneX(lane), z: SPAWN_Z - 30, half: (bike ? 0.55 : 1.15) * SIZE, hit: false, disp: !!node.userData.disp, car: false, kind: 'oncoming', close: 30 });
+  }
+  _startCrossingWarn() {
+    const z = SPAWN_Z * 0.5; // crossing line ~mid-distance
+    const fromLeft = Math.random() < 0.5;
+    this.staticSuppressUntil = this.distance + 85; this.staticThin = 99; // clear static around it
+    const mk = new THREE.Mesh(
+      new THREE.PlaneGeometry(ROAD_HALF * 2, 1.4),
+      new THREE.MeshBasicMaterial({ color: 0xffd23c, transparent: true, opacity: 0.8, depthWrite: false, fog: false })
+    );
+    mk.rotation.x = -Math.PI / 2; mk.position.set(0, 0.06, z);
+    this.scene.add(mk);
+    this.crossWarn = { mesh: mk, z, t: 0.8, fromLeft };
+  }
+  _spawnCrossingEntity(cw) {
+    const node = Math.random() < 0.5 ? makePed() : makeBike();
+    const startX = cw.fromLeft ? -(ROAD_HALF + 2) : (ROAD_HALF + 2);
+    const vx = (cw.fromLeft ? 1 : -1) * (6.5 + Math.random() * 3);
+    node.position.set(startX, 0, cw.z);
+    this.scene.add(node);
+    this.obstacles.push({ node, x: startX, z: cw.z, half: 0.55 * SIZE, hit: false, disp: true, car: false, kind: 'crossing', vx });
   }
 
   _spawnObstacleAt(x) {
@@ -826,9 +935,16 @@ export class RacingGame3D {
       // path lane reachable in time — always a solvable활로)
       const effRowGap = Math.max(this.rowGapFloor, this.diff.rowGap - this.escLevel * 2);
       if (this.distSinceRow >= effRowGap) { this.distSinceRow = 0; this._spawnRow(); }
-      for (const o of this.obstacles) { o.z += worldMove; o.node.position.z = o.z; }
+      if (this.distance >= 3000) this._updateSpecials(dt, worldMove); // oncoming / crossing
+      for (const o of this.obstacles) {
+        if (o.kind === 'oncoming') o.z += worldMove + o.close * dt;          // closes toward player
+        else if (o.kind === 'crossing') { o.z += worldMove; o.x += o.vx * dt; o.node.position.x = o.x; } // sweeps across
+        else o.z += worldMove;
+        o.node.position.z = o.z;
+      }
       for (let i = this.obstacles.length - 1; i >= 0; i--) {
-        if (this.obstacles[i].z > 15) {
+        const oi = this.obstacles[i];
+        if (oi.z > 15 || (oi.kind === 'crossing' && Math.abs(oi.x) > ROAD_HALF + 4)) {
           const o = this.obstacles[i];
           if (o.car) {
             // recycle: hide and return to the pool (stays in the scene, no dispose)
