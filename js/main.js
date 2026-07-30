@@ -9,6 +9,7 @@
 
 import { createHandTracker } from './hand-tracking.js';
 import { RacingGame3D as RacingGame, VEHICLES, MAPS } from './game3d.js';
+import { applyIcons } from './icons.js';
 import {
   getProfile, ensureProfile, addRun, submitBest,
   getLocalBest, getHistory, fetchTop, fetchMyRank, remoteEnabled,
@@ -128,6 +129,7 @@ document.addEventListener('click', (e) => {
   const nx = e.target.closest('[data-next]'); if (nx) { showStep(+nx.dataset.next); return; }
   const bk = e.target.closest('[data-back]'); if (bk) { showStep(+bk.dataset.back); }
 });
+applyIcons();          // swap all <span data-ico> placeholders for line-icon SVGs
 buildVehicleGrid();
 buildMapGrid();
 

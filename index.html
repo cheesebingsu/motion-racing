@@ -40,8 +40,8 @@
           </div>
         </div>
         <div class="hud__row hud__row--bottom">
-          <span id="hud-lives" class="hud__lives">❤❤❤</span>
-          <button id="menu-btn" class="btn btn--ghost hud__menu">⏸ 메뉴</button>
+          <span id="hud-lives" class="hud__lives"></span>
+          <button id="menu-btn" class="btn btn--ghost hud__menu"><span class="ico" data-ico="pause"></span> 메뉴</button>
         </div>
       </div>
 
@@ -55,7 +55,7 @@
       <!-- 3D overlays (countdown / pause) drawn as DOM over the WebGL canvas -->
       <div id="countdown3d" class="cd3d" hidden></div>
       <div id="pause3d" class="pause3d" hidden>
-        <div class="pause3d__title">⏸ 일시정지</div>
+        <div class="pause3d__title"><span class="ico" data-ico="pause"></span> 일시정지</div>
         <div class="pause3d__sub">양손을 화면에 보여주면 이어서 시작해요</div>
       </div>
 
@@ -65,16 +65,16 @@
       <!-- Lobby (home) -->
       <div id="lobby-screen" class="screen screen--lobby" hidden>
         <div class="lobby__top">
-          <button id="profile-chip" class="chip">👤 <span id="profile-name">플레이어</span></button>
+          <button id="profile-chip" class="chip"><span class="ico" data-ico="user"></span> <span id="profile-name">플레이어</span></button>
           <div class="lobby__icons">
-            <button id="rank-open" class="iconbtn" aria-label="랭킹">🏆</button>
-            <button id="settings-open" class="iconbtn" aria-label="설정">⚙️</button>
+            <button id="rank-open" class="iconbtn" aria-label="랭킹"><span class="ico" data-ico="trophy"></span></button>
+            <button id="settings-open" class="iconbtn" aria-label="설정"><span class="ico" data-ico="gear"></span></button>
           </div>
         </div>
         <div class="lobby__center">
           <h2 class="lobby__title">모션 레이싱</h2>
           <p class="lobby__sub">양손으로 핸들을 잡고 기울여 조종하세요</p>
-          <button id="play-btn" class="btn btn--primary btn--play">▶ 플레이</button>
+          <button id="play-btn" class="btn btn--primary btn--play"><span class="ico" data-ico="play"></span> 플레이</button>
           <button id="practice-btn" class="btn btn--ghost">연습 모드 · 장애물 없음</button>
         </div>
       </div>
@@ -83,7 +83,7 @@
       <div id="setup-screen" class="screen screen--setup" hidden>
         <div class="screen__panel wizard">
           <div class="wizard__head">
-            <button id="setup-exit" class="wizard__x" aria-label="닫기">✕</button>
+            <button id="setup-exit" class="wizard__x" aria-label="닫기"><span class="ico" data-ico="x"></span></button>
             <div class="wizard__progress" id="wizard-progress"><i></i><i></i><i></i></div>
           </div>
 
@@ -92,7 +92,7 @@
             <div class="wstep__label">차량 선택</div>
             <div id="vehicle-grid" class="pickgrid"></div>
             <div class="wstep__nav">
-              <button class="btn btn--primary" data-next="2">다음 ▸</button>
+              <button class="btn btn--primary" data-next="2">다음 <span class="ico" data-ico="chevronRight"></span></button>
             </div>
           </div>
 
@@ -101,8 +101,8 @@
             <div class="wstep__label">맵 선택</div>
             <div id="map-grid" class="pickgrid"></div>
             <div class="wstep__nav">
-              <button class="btn btn--ghost" data-back="1">◂ 뒤로</button>
-              <button class="btn btn--primary" data-next="3">다음 ▸</button>
+              <button class="btn btn--ghost" data-back="1"><span class="ico" data-ico="chevronLeft"></span> 뒤로</button>
+              <button class="btn btn--primary" data-next="3">다음 <span class="ico" data-ico="chevronRight"></span></button>
             </div>
           </div>
 
@@ -124,9 +124,9 @@
                 <button class="difficulty__btn" data-view="1st">1인칭 (운전석)</button>
               </div>
             </div>
-            <p class="screen__tip">💡 양손으로 핸들을 잡고 기울여 조종 · 손이 안 잡히면 뒤로 앉아 두 손을 화면에</p>
+            <p class="screen__tip"><span class="ico" data-ico="bulb"></span> 양손으로 핸들을 잡고 기울여 조종 · 손이 안 잡히면 뒤로 앉아 두 손을 화면에</p>
             <div class="wstep__nav">
-              <button class="btn btn--ghost" data-back="2">◂ 뒤로</button>
+              <button class="btn btn--ghost" data-back="2"><span class="ico" data-ico="chevronLeft"></span> 뒤로</button>
               <button id="start-btn" class="btn btn--primary">게임 시작</button>
             </div>
           </div>
@@ -136,7 +136,7 @@
       <!-- Settings -->
       <div id="settings-screen" class="screen screen--settings" hidden>
         <div class="screen__panel">
-          <h2 class="screen__title">⚙️ 설정</h2>
+          <h2 class="screen__title"><span class="ico" data-ico="gear"></span> 설정</h2>
           <div class="setting">
             <label class="setting__label" for="sensitivity">
               핸들 감도 <span id="sensitivity-val" class="setting__val">1.0×</span>
@@ -144,7 +144,7 @@
             <input id="sensitivity" class="setting__slider" type="range"
                    min="0.5" max="2" step="0.1" value="1" aria-label="핸들 감도" />
           </div>
-          <button id="fullscreen-btn" class="btn btn--ghost">⛶ 전체화면 (모바일 권장)</button>
+          <button id="fullscreen-btn" class="btn btn--ghost"><span class="ico" data-ico="expand"></span> 전체화면 (모바일 권장)</button>
           <p class="screen__note">웹캠 권한 필요 · localhost 또는 https 에서 실행</p>
           <button id="settings-close" class="btn btn--ghost">닫기</button>
         </div>
@@ -154,11 +154,11 @@
       <div id="gameover-screen" class="screen screen--over" hidden>
         <div class="screen__panel">
           <h2 class="screen__title screen__title--over">게임 오버</h2>
-          <div id="rank-newbest" class="newbest" hidden>🎉 신기록!</div>
+          <div id="rank-newbest" class="newbest" hidden><span class="ico" data-ico="spark"></span> 신기록!</div>
           <p id="final-score" class="screen__final">거리: 0 m</p>
           <div class="screen__actions">
-            <button id="gameover-home" class="btn btn--primary">🏠 로비로 가기</button>
-            <button id="rank-open-over" class="btn btn--ghost">🏆 랭킹 보기</button>
+            <button id="gameover-home" class="btn btn--primary"><span class="ico" data-ico="home"></span> 로비로 가기</button>
+            <button id="rank-open-over" class="btn btn--ghost"><span class="ico" data-ico="trophy"></span> 랭킹 보기</button>
           </div>
         </div>
       </div>
@@ -166,10 +166,10 @@
       <!-- Pause menu (in-game ⏸ 메뉴 button) — pause only, no settings changes -->
       <div id="pausemenu-screen" class="screen screen--pause" hidden>
         <div class="screen__panel">
-          <h2 class="screen__title">⏸ 일시정지</h2>
+          <h2 class="screen__title"><span class="ico" data-ico="pause"></span> 일시정지</h2>
           <div class="screen__actions">
-            <button id="resume-btn" class="btn btn--primary">▶ 이어서 하기</button>
-            <button id="lobby-btn" class="btn btn--ghost">🏠 로비로 가기</button>
+            <button id="resume-btn" class="btn btn--primary"><span class="ico" data-ico="play"></span> 이어서 하기</button>
+            <button id="lobby-btn" class="btn btn--ghost"><span class="ico" data-ico="home"></span> 로비로 가기</button>
           </div>
         </div>
       </div>
@@ -177,7 +177,7 @@
       <!-- Nickname screen (first launch welcome + later edit) -->
       <div id="nick-screen" class="screen screen--nick" hidden>
         <div class="screen__panel">
-          <h2 class="screen__title" id="nick-title">환영합니다 👋</h2>
+          <h2 class="screen__title" id="nick-title">환영합니다</h2>
           <p class="screen__sub" id="nick-sub">랭킹에 표시될 닉네임을 정해주세요</p>
           <input id="nick-input" class="modal__input" maxlength="12" placeholder="1~12자" />
           <button id="nick-ok" class="btn btn--primary">시작</button>
@@ -187,7 +187,7 @@
       <!-- Ranking page -->
       <div id="rank-screen" class="screen screen--rank" hidden>
         <div class="screen__panel rank">
-          <h2 class="screen__title">🏆 랭킹</h2>
+          <h2 class="screen__title"><span class="ico" data-ico="trophy"></span> 랭킹</h2>
           <div class="rank__tabs" id="rank-tabs" role="group" aria-label="난이도 선택">
             <button class="rank__tab is-selected" data-diff="easy">쉬움</button>
             <button class="rank__tab" data-diff="medium">중간</button>
@@ -212,7 +212,7 @@
 
   <!-- Shown only on phones held in portrait: prompt to rotate to landscape. -->
   <div class="rotate-hint" aria-hidden="true">
-    <div class="rotate-hint__icon">📱↻</div>
+    <div class="rotate-hint__icon"><span class="ico" data-ico="phone"></span></div>
     <p class="rotate-hint__text">가로로 눕혀서 플레이하세요</p>
   </div>
 

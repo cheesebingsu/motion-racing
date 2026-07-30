@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { icon } from './icons.js';
 
 // ---- world tunables (metres) ----------------------------------------------
 const VIEW_W = 960, VIEW_H = 540;
@@ -921,8 +922,8 @@ export class RacingGame3D {
   _updateHud() {
     const s = '거리: ' + Math.floor(this.distance) + ' m';
     if (s !== this._lastScoreStr && this.hudScore) { this.hudScore.textContent = s; this._lastScoreStr = s; }
-    const l = this.practice ? '🟢 연습' : this.lives > 0 ? '❤'.repeat(this.lives) : '💀';
-    if (l !== this._lastLivesStr && this.hudLives) { this.hudLives.textContent = l; this._lastLivesStr = l; }
+    const l = this.practice ? '연습' : this.lives > 0 ? icon('heart').repeat(this.lives) : '';
+    if (l !== this._lastLivesStr && this.hudLives) { this.hudLives.innerHTML = l; this._lastLivesStr = l; }
     const sp = '속도: ' + Math.floor(this.speed / 3) + ' km/h';
     if (sp !== this._lastSpeedStr && this.hudSpeed) { this.hudSpeed.textContent = sp; this._lastSpeedStr = sp; }
   }

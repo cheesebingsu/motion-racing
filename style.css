@@ -187,10 +187,18 @@ body.playing .stage {
 .hud__lives {
   color: var(--danger);
   font-size: 24px;
-  padding: 6px 16px;
-  letter-spacing: 4px;
-  text-shadow: 0 0 12px rgba(255, 77, 109, 0.7);
+  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-shadow: 0 0 10px rgba(255, 77, 109, 0.55);
 }
+
+/* ---------- Inline line icons (replace emoji) ---------- */
+.ico { display: inline-flex; align-items: center; justify-content: center; vertical-align: -0.15em; }
+.ico__svg { width: 1.1em; height: 1.1em; display: block; }
+.iconbtn .ico__svg { width: 1.25em; height: 1.25em; }
+.hud__lives .ico__svg { width: 0.95em; height: 0.95em; }
 
 /* ---------- Webcam preview (mirrored) ---------- */
 .cam {
