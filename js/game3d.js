@@ -775,7 +775,7 @@ export class RacingGame3D {
     this.carRoll += (rollTarget - this.carRoll) * Math.min(1, dt * 5);
 
     const worldMove = this.speed * WZ * dt;
-    this.roadTex.offset.y -= worldMove / 20;
+    this.roadTex.offset.y += worldMove / 20; // scroll toward the camera (road comes at you)
     if (this.roadNrm) this.roadNrm.offset.y = this.roadTex.offset.y;
 
     // buildings scroll toward camera; fill on first frame, then top up at fixed
