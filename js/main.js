@@ -301,7 +301,8 @@ async function renderRank(diff) {
   const hist = getHistory(diff);
   mineEl.innerHTML = hist.length
     ? hist.map((r) => '<li' + (r.distance === myBest ? ' class="is-me"' : '') + '><span>·</span><b>' +
-        new Date(r.ts).toLocaleDateString() + '</b><em>' + r.distance + ' m</em></li>').join('')
+        new Date(r.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) +
+        '</b><em>' + r.distance + ' m</em></li>').join('')
     : '<li class="rank__empty">이 난이도 기록이 없어요</li>';
 
   // 전체 랭킹 (원격)
