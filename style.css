@@ -152,7 +152,7 @@ body.playing .stage {
   justify-content: space-between;
 }
 
-.hud__row--bottom { justify-content: flex-end; }
+.hud__row--bottom { justify-content: space-between; align-items: flex-end; }
 
 /* Stacked score + speed in the top-left, clear of the steering wheel. */
 .hud__group {
@@ -186,7 +186,9 @@ body.playing .stage {
 
 .hud__lives {
   color: var(--danger);
-  letter-spacing: 2px;
+  font-size: 24px;
+  padding: 6px 16px;
+  letter-spacing: 4px;
   text-shadow: 0 0 12px rgba(255, 77, 109, 0.7);
 }
 

@@ -249,6 +249,7 @@ export class RacingGame3D {
     this.currentVehicleId = null;
     this.trafficVariants = [];  // pre-tinted clones of the other vehicles (traffic pool)
     this.trafficVehicleId = null;
+    this.carPool = [];          // recycled traffic-car nodes (avoid per-spawn clone)
     this.bldTex = [];
     this.buildingDay = false;
     this.landmark = null;
@@ -555,6 +556,8 @@ export class RacingGame3D {
     // recycle any live obstacles/buildings
     for (const o of this.obstacles) this.scene.remove(o.node);
     this.obstacles = [];
+    for (const n of this.carPool) this.scene.remove(n);
+    this.carPool = [];
     for (const b of this.buildings) this.scene.remove(b.node);
     this.buildings = [];
 
@@ -692,12 +695,15 @@ export class RacingGame3D {
 
   _spawnObstacleAt(x) {
     const r = Math.random();
-    let node, half, disp = false;
+    let node, half, disp = false, car = false, fromPool = false;
     if (r < 0.55 && this.trafficVariants && this.trafficVariants.length) {
-      // Traffic = a pre-built, pre-tinted variant of one of the OTHER vehicles.
-      // clone(true) shares its (already-tinted) materials → cheap, no GPU upload,
-      // no per-spawn material work. (Materials belong to the pooled variants.)
-      node = this.trafficVariants[(Math.random() * this.trafficVariants.length) | 0].clone(true);
+      // Traffic = a recycled car node (or, only when the pool is empty, one fresh
+      // clone(true) of a pre-tinted variant). Recycling removes the per-spawn
+      // clone/allocation that caused the steady-state stutter.
+      car = true;
+      node = this.carPool.pop();
+      if (node) { node.visible = true; fromPool = true; }
+      else node = this.trafficVariants[(Math.random() * this.trafficVariants.length) | 0].clone(true);
       half = 1.2 * SIZE;
     } else if (r < 0.72) {
       disp = true;
@@ -726,8 +732,8 @@ export class RacingGame3D {
       half = 1.55 * SIZE;
     }
     node.position.x = x; node.position.z = SPAWN_Z;
-    this.scene.add(node);
-    this.obstacles.push({ node, x, z: SPAWN_Z, half, hit: false, disp });
+    if (!fromPool) this.scene.add(node); // pooled car nodes stay in the scene (hidden)
+    this.obstacles.push({ node, x, z: SPAWN_Z, half, hit: false, disp, car });
   }
 
   // ---- update -----------------------------------------------------------
@@ -803,10 +809,15 @@ export class RacingGame3D {
       for (let i = this.obstacles.length - 1; i >= 0; i--) {
         if (this.obstacles[i].z > 15) {
           const o = this.obstacles[i];
-          this.scene.remove(o.node);
-          // props own unique geo/mat → dispose them; traffic clones share pooled
-          // variant materials → just drop the reference (no dispose, no leak).
-          if (o.disp) o.node.traverse((c) => { if (c.isMesh) { c.geometry.dispose(); const mm = Array.isArray(c.material) ? c.material : [c.material]; for (const m of mm) m.dispose(); } });
+          if (o.car) {
+            // recycle: hide and return to the pool (stays in the scene, no dispose)
+            o.node.visible = false;
+            this.carPool.push(o.node);
+          } else {
+            this.scene.remove(o.node);
+            // props own unique geo/mat → dispose them (no leak).
+            if (o.disp) o.node.traverse((c) => { if (c.isMesh) { c.geometry.dispose(); const mm = Array.isArray(c.material) ? c.material : [c.material]; for (const m of mm) m.dispose(); } });
+          }
           this.obstacles.splice(i, 1);
         }
       }
