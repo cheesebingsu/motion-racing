@@ -27,9 +27,9 @@ const laneX = (i) => -LANE_SPAN + (i * 2 * LANE_SPAN) / (LANES - 1);
 // startSpeed/maxSpeed/accel: speed curve. rowGap: metres between obstacle rows.
 // density: how many lanes a row blocks (the guaranteed-free path lane is never one).
 const DIFFICULTY = {
-  easy:   { key: 'easy',   label: '쉬움',   startSpeed: 150, maxSpeed: 520,  accel: 5,  rowGap: 60, density: 1, shift: 0.45 },
-  medium: { key: 'medium', label: '중간',   startSpeed: 220, maxSpeed: 880,  accel: 9,  rowGap: 56, density: 2, shift: 0.6 },
-  hard:   { key: 'hard',   label: '어려움', startSpeed: 340, maxSpeed: 1150, accel: 14, rowGap: 44, density: 3, shift: 0.85 },
+  easy:   { key: 'easy',   label: '쉬움',   startSpeed: 150, maxSpeed: 680,  accel: 8,  rowGap: 60, density: 1, shift: 0.45 },
+  medium: { key: 'medium', label: '중간',   startSpeed: 220, maxSpeed: 1100, accel: 15, rowGap: 56, density: 2, shift: 0.6 },
+  hard:   { key: 'hard',   label: '어려움', startSpeed: 340, maxSpeed: 1450, accel: 20, rowGap: 44, density: 3, shift: 0.85 },
 };
 
 const CAR_TINTS = [0xff4455, 0x44aaff, 0xffcc44, 0x66ff88, 0xffffff, 0xaa66ff];
@@ -545,6 +545,14 @@ export class RacingGame3D {
     this.pathLane = Math.floor(LANES / 2); // guaranteed-free lane (starts centre)
     this.distSinceRow = this.diff.rowGap * 0.5; // first row after a short run-up
 
+    // Escalation after the speed caps: obstacles get denser (and rows a touch
+    // tighter). escLevel rises with distance travelled at top speed.
+    this.escLevel = 0;
+    this.escDist = 0;
+    // rowGap floor keeps ~1s of weave time even at max speed so the guaranteed
+    // path lane is always physically reachable (never tighten past this).
+    this.rowGapFloor = Math.min(this.diff.rowGap, this.diff.maxSpeed * 0.048);
+
     this.invuln = 0;
     this.gameOver = false;
     this.practice = false;
@@ -689,7 +697,9 @@ export class RacingGame3D {
     const others = [];
     for (let i = 0; i < LANES; i++) if (i !== this.pathLane) others.push(i);
     for (let i = others.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [others[i], others[j]] = [others[j], others[i]]; }
-    const blockN = Math.min(d.density, others.length);
+    // escalate density, but cap at LANES-1 so pathLane (the guaranteed활로) is never blocked
+    const effDensity = Math.min(LANES - 1, d.density + this.escLevel);
+    const blockN = Math.min(effDensity, others.length);
     for (let k = 0; k < blockN; k++) this._spawnObstacleAt(laneX(others[k]));
   }
 
@@ -761,6 +771,12 @@ export class RacingGame3D {
     this.speed = Math.min(this.diff.maxSpeed, this.speed + this.diff.accel * dt);
     this.distance += this.speed * dt * 0.05;
 
+    // Once at (near) top speed, ramp difficulty by distance: obstacles get denser.
+    if (this.speed >= this.diff.maxSpeed - 1) {
+      this.escDist += this.speed * dt * 0.05;
+      this.escLevel = Math.floor(this.escDist / 350); // +1 level ≈ every 6-8s at top speed
+    }
+
     // lateral movement with momentum (scaled by the vehicle's handling)
     const targetVX = steering * 4.4 * this.handlingMult;
     this.playerVX += (targetVX - this.playerVX) * Math.min(1, dt * 5.5);
@@ -804,7 +820,10 @@ export class RacingGame3D {
     // obstacles — spawned in ROWS spaced by distance, each with a guaranteed gap
     if (!this.practice) {
       this.distSinceRow += worldMove;
-      if (this.distSinceRow >= this.diff.rowGap) { this.distSinceRow = 0; this._spawnRow(); }
+      // rows tighten slightly with escalation but never below rowGapFloor (keeps the
+      // path lane reachable in time — always a solvable활로)
+      const effRowGap = Math.max(this.rowGapFloor, this.diff.rowGap - this.escLevel * 2);
+      if (this.distSinceRow >= effRowGap) { this.distSinceRow = 0; this._spawnRow(); }
       for (const o of this.obstacles) { o.z += worldMove; o.node.position.z = o.z; }
       for (let i = this.obstacles.length - 1; i >= 0; i--) {
         if (this.obstacles[i].z > 15) {
