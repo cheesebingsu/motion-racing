@@ -187,12 +187,14 @@ async function beginGame(practice) {
   if (!game) { game = new RacingGame(canvas, tracker); game.onGameOver = handleGameOver; }
   game.stop();                       // in case a game was already running
   game.start({ practice: lastPractice, difficulty: selectedDifficulty, vehicle: selectedVehicle, map: selectedMap, view: selectedView });
+  if (tracker.setActive) tracker.setActive(true); // run hand detection only while playing
   document.body.classList.add('playing'); // hide title chrome → maximise the game
 }
 
 // ---- back to the lobby (used by pause-menu + game-over) --------------------
 function toMenu() {
   if (game) game.stop();
+  if (tracker && tracker.setActive) tracker.setActive(false); // stop detection in menus
   setStatus('');
   const pm = document.getElementById('pausemenu-screen');
   if (pm) pm.hidden = true;
@@ -271,6 +273,7 @@ if (getProfile()) goto('lobby'); else showNick(false);
 // ---- game over → record score ---------------------------------------------
 let lastResult = null;
 function handleGameOver({ distance, difficulty, practice }) {
+  if (tracker && tracker.setActive) tracker.setActive(false); // game ended → stop detection
   const badge = document.getElementById('rank-newbest');
   if (practice) { if (badge) badge.hidden = true; lastResult = null; return; } // 연습모드 집계 제외
   const { isBest } = addRun(difficulty, distance);
@@ -365,17 +368,15 @@ function uiLoop() {
   requestAnimationFrame(uiLoop);
   if (!tracker) return;
 
+  const playing = game && game.running;
+  if (!playing) return; // in menus: no wheel/style writes, no status churn
+
   // Rotate the cockpit steering wheel so it turns the SAME direction the user
   // rolls their hands (negate: tiltDeg is in mirrored-image space). Keep the
   // bottom-centre positioning transform intact.
   if (wheel) wheel.style.transform = 'translateX(-50%) rotate(' + (-tracker.tiltDeg).toFixed(1) + 'deg)';
 
-  // Only nag about hands while a game is actually running.
-  const playing = game && game.running;
-  if (playing && !tracker.detected) {
-    setStatus('양손을 화면에 보여주세요', 'is-warn');
-  } else if (playing) {
-    setStatus('');
-  }
+  if (!tracker.detected) setStatus('양손을 화면에 보여주세요', 'is-warn');
+  else setStatus('');
 }
 requestAnimationFrame(uiLoop);

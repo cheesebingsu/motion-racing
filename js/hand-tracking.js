@@ -47,7 +47,11 @@ export async function createHandTracker(videoEl, overlayCanvas) {
   // --- 1. Camera ---
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    // A small frame is plenty for 21-landmark tracking and much cheaper to detect
+    // than the browser default (often 640×480+). Big main-thread win.
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 30 } },
+    });
   } catch (err) {
     throw new Error(
       "카메라를 사용할 수 없습니다. 카메라 권한을 허용하고 localhost 또는 https 환경에서 실행하세요. (" +
@@ -148,8 +152,14 @@ export async function createHandTracker(videoEl, overlayCanvas) {
     tiltDeg: 0, // wheel tilt in degrees, RELATIVE to the calibrated neutral (for #wheel UI)
     stop,
     calibrate, // capture the current hand pose as "straight" (absorbs camera rotation)
-    setSensitivity // adjust steering sensitivity (multiplier; >1 = more sensitive)
+    setSensitivity, // adjust steering sensitivity (multiplier; >1 = more sensitive)
+    setActive // enable/disable heavy detection (off in menus → main thread free)
   };
+
+  // Detection gate: only run MediaPipe while actually playing. In menus the camera
+  // preview stays live but the expensive per-frame detect + overlay draw is skipped.
+  let active = false;
+  function setActive(v) { active = !!v; }
 
   // Steering sensitivity multiplier. 1 = default; higher turns more per hand tilt.
   let sensitivity = 1;
@@ -177,6 +187,8 @@ export async function createHandTracker(videoEl, overlayCanvas) {
   function loop() {
     if (!running) return;
     rafId = requestAnimationFrame(loop);
+
+    if (!active) return; // menus: skip detection entirely (keeps the loop cheap)
 
     // Only run detection when the video advanced to a new frame.
     if (videoEl.currentTime === lastVideoTime) return;

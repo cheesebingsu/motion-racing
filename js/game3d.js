@@ -41,7 +41,23 @@ const WIN_COOL = ['#66e0ff', '#ff6ad5', '#b088ff', '#88ffcc', '#5ea8ff'];
 // Procedural window-facade texture sized to a building. night=neon lit windows;
 // day=concrete/glass with dark daytime windows (lit by the scene, not emissive).
 const DAY_WALLS = ['#9aa0a8', '#b7b2a6', '#8f9aa6', '#a8a29a'];
+// Window-facade textures are POOLED: a small fixed set is built once and shared by
+// every building (instead of a fresh CanvasTexture per spawn, which caused steady
+// mid-frame GPU uploads / hitches). Buildings are mostly photo-clad anyway.
+let _winPool = null;
 function makeWindowsTex(cols, rows, neon, day) {
+  if (!_winPool) {
+    _winPool = { day: [], warm: [], cool: [] };
+    for (let i = 0; i < 4; i++) {
+      _winPool.day.push(buildWinTex(5, 16, null, true));
+      _winPool.warm.push(buildWinTex(5, 16, WIN_WARM, false));
+      _winPool.cool.push(buildWinTex(5, 16, WIN_COOL, false));
+    }
+  }
+  const arr = day ? _winPool.day : (neon === WIN_WARM ? _winPool.warm : _winPool.cool);
+  return arr[(Math.random() * arr.length) | 0];
+}
+function buildWinTex(cols, rows, neon, day) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 512;
   const g = c.getContext('2d');
   if (day) {
@@ -203,7 +219,7 @@ export class RacingGame3D {
 
     // ---- renderer / scene / camera ----
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
     renderer.setSize(VIEW_W, VIEW_H, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -231,7 +247,7 @@ export class RacingGame3D {
     this.obstacles = [];
     this.currentMapId = null;
     this.currentVehicleId = null;
-    this.trafficModels = [];  // other vehicles used as traffic (never the player's pick)
+    this.trafficVariants = [];  // pre-tinted clones of the other vehicles (traffic pool)
     this.trafficVehicleId = null;
     this.bldTex = [];
     this.buildingDay = false;
@@ -367,9 +383,9 @@ export class RacingGame3D {
   // normalised + prepared so it can be cloned cheaply per obstacle. Rear faces
   // us (traffic drives the same way). Recolored per-spawn for extra variety.
   _loadTrafficModels(excludeId) {
-    if (this.trafficVehicleId === excludeId && this.trafficModels.length) return;
+    if (this.trafficVehicleId === excludeId && this.trafficVariants.length) return;
     this.trafficVehicleId = excludeId;
-    this.trafficModels = [];
+    this.trafficVariants = [];
     for (const v of VEHICLES) {
       if (v.id === excludeId) continue;
       loadGLB(v.glb).then((car) => {
@@ -382,7 +398,20 @@ export class RacingGame3D {
         const box2 = new THREE.Box3().setFromObject(car);
         car.position.y -= box2.min.y;
         car.rotation.y = -Math.PI / 2; // rear faces us (same-direction traffic)
-        this.trafficModels.push(car);
+        // Pre-build a few tinted variants ONCE (materials cloned + tinted here,
+        // not per spawn). Spawns then clone(true) a variant cheaply, sharing these.
+        for (let k = 0; k < 3; k++) {
+          const variant = car.clone(true);
+          const tint = TRAFFIC_TINTS[(Math.random() * TRAFFIC_TINTS.length) | 0];
+          variant.traverse((o) => {
+            if (o.isMesh && o.material) {
+              o.material = o.material.clone();
+              if (o.material.color) o.material.color.multiply(tint);
+              if ('envMapIntensity' in o.material) o.material.envMapIntensity = 1.2;
+            }
+          });
+          this.trafficVariants.push(variant);
+        }
       });
     }
   }
@@ -663,16 +692,15 @@ export class RacingGame3D {
 
   _spawnObstacleAt(x) {
     const r = Math.random();
-    let node, half;
-    if (r < 0.55 && this.trafficModels.length) {
-      // Traffic = one of the OTHER vehicles (never the player's pick), tinted a
-      // random colour so no two look identical.
-      const base = this.trafficModels[Math.floor(Math.random() * this.trafficModels.length)];
-      node = base.clone(true);
-      const tint = TRAFFIC_TINTS[Math.floor(Math.random() * TRAFFIC_TINTS.length)];
-      node.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); if (o.material.color) o.material.color.multiply(tint); } });
+    let node, half, disp = false;
+    if (r < 0.55 && this.trafficVariants && this.trafficVariants.length) {
+      // Traffic = a pre-built, pre-tinted variant of one of the OTHER vehicles.
+      // clone(true) shares its (already-tinted) materials → cheap, no GPU upload,
+      // no per-spawn material work. (Materials belong to the pooled variants.)
+      node = this.trafficVariants[(Math.random() * this.trafficVariants.length) | 0].clone(true);
       half = 1.2 * SIZE;
     } else if (r < 0.72) {
+      disp = true;
       const m = new THREE.Mesh(new THREE.ConeGeometry(0.5 * SIZE, 1.1 * SIZE, 20), new THREE.MeshStandardMaterial({ color: 0xff6a1a, emissive: 0xff5510, emissiveIntensity: 0.3, roughness: 0.6 }));
       m.position.y = 0.55 * SIZE; node = new THREE.Group(); node.add(m);
       const band = new THREE.Mesh(new THREE.CylinderGeometry(0.42 * SIZE, 0.5 * SIZE, 0.22 * SIZE, 20), new THREE.MeshStandardMaterial({ color: 0xffffff }));
@@ -680,6 +708,7 @@ export class RacingGame3D {
       half = 0.6 * SIZE;
     } else if (r < 0.86) {
       // oil drum / barrel
+      disp = true;
       const col = BARREL_COLORS[Math.floor(Math.random() * BARREL_COLORS.length)];
       const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.55 * SIZE, 0.55 * SIZE, 1.4 * SIZE, 22), new THREE.MeshStandardMaterial({ color: col, metalness: 0.4, roughness: 0.5 }));
       drum.position.y = 0.7 * SIZE; node = new THREE.Group(); node.add(drum);
@@ -689,6 +718,7 @@ export class RacingGame3D {
       }
       half = 0.62 * SIZE;
     } else {
+      disp = true;
       const m = new THREE.Mesh(new THREE.BoxGeometry(3.0 * SIZE, 1.1 * SIZE, 0.5 * SIZE), new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xaa4400, emissiveIntensity: 0.25, roughness: 0.7 }));
       m.position.y = 0.75 * SIZE; node = new THREE.Group(); node.add(m);
       const legL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.4 * SIZE, 0.15), new THREE.MeshStandardMaterial({ color: 0x222222 })); legL.position.set(-1.35 * SIZE, 0.7 * SIZE, 0); node.add(legL);
@@ -697,7 +727,7 @@ export class RacingGame3D {
     }
     node.position.x = x; node.position.z = SPAWN_Z;
     this.scene.add(node);
-    this.obstacles.push({ node, x, z: SPAWN_Z, half, hit: false });
+    this.obstacles.push({ node, x, z: SPAWN_Z, half, hit: false, disp });
   }
 
   // ---- update -----------------------------------------------------------
@@ -757,12 +787,10 @@ export class RacingGame3D {
       if (bn.position.z > 25) {
         this.scene.remove(bn);
         bn.geometry.dispose();
+        // maps are all shared now (pooled window textures + shared photo textures)
+        // → dispose only the per-building materials, never their maps.
         const mm = Array.isArray(bn.material) ? bn.material : [bn.material];
-        for (const m of mm) {
-          // dispose per-building window textures, but NOT the shared photo textures
-          if (m.map && (!this.bldTex || !this.bldTex.includes(m.map))) m.map.dispose();
-          m.dispose();
-        }
+        for (const m of mm) m.dispose();
         this.buildings.splice(i, 1);
       }
     }
@@ -773,7 +801,14 @@ export class RacingGame3D {
       if (this.distSinceRow >= this.diff.rowGap) { this.distSinceRow = 0; this._spawnRow(); }
       for (const o of this.obstacles) { o.z += worldMove; o.node.position.z = o.z; }
       for (let i = this.obstacles.length - 1; i >= 0; i--) {
-        if (this.obstacles[i].z > 15) { this.scene.remove(this.obstacles[i].node); this.obstacles.splice(i, 1); }
+        if (this.obstacles[i].z > 15) {
+          const o = this.obstacles[i];
+          this.scene.remove(o.node);
+          // props own unique geo/mat → dispose them; traffic clones share pooled
+          // variant materials → just drop the reference (no dispose, no leak).
+          if (o.disp) o.node.traverse((c) => { if (c.isMesh) { c.geometry.dispose(); const mm = Array.isArray(c.material) ? c.material : [c.material]; for (const m of mm) m.dispose(); } });
+          this.obstacles.splice(i, 1);
+        }
       }
       if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt);
       this._checkCollisions();
@@ -806,15 +841,17 @@ export class RacingGame3D {
       this.camera.lookAt(carX * 0.6, 0.9, -18);
     }
 
-    // rain fall
-    const rp = this.rain.geometry.attributes.position.array;
-    for (let i = 0; i < rp.length; i += 3) {
-      rp[i + 1] -= (30 + this.speed * 0.02) * dt;
-      rp[i + 2] += worldMove;
-      if (rp[i + 1] < 0 || rp[i + 2] > 10) { rp[i + 1] = 35 + Math.random() * 10; rp[i + 2] = -Math.random() * 120; rp[i] = camX + (Math.random() - 0.5) * 60; }
+    // rain fall — only simulate on maps that actually show rain
+    if (this.rain.visible) {
+      const rp = this.rain.geometry.attributes.position.array;
+      for (let i = 0; i < rp.length; i += 3) {
+        rp[i + 1] -= (30 + this.speed * 0.02) * dt;
+        rp[i + 2] += worldMove;
+        if (rp[i + 1] < 0 || rp[i + 2] > 10) { rp[i + 1] = 35 + Math.random() * 10; rp[i + 2] = -Math.random() * 120; rp[i] = camX + (Math.random() - 0.5) * 60; }
+      }
+      this.rain.geometry.attributes.position.needsUpdate = true;
+      this.rain.position.z = 0;
     }
-    this.rain.geometry.attributes.position.needsUpdate = true;
-    this.rain.position.z = 0;
 
     this._updateHud();
   }
