@@ -8,6 +8,7 @@
 // at http://localhost:PORT/ .
 
 import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+import { t } from "./i18n.js";
 
 // Tuning constants for the steering math.
 const FULL_LOCK_DEG = 32;   // ~30-35 deg of wheel tilt == full lock (steering ±1)
@@ -54,9 +55,7 @@ export async function createHandTracker(videoEl, overlayCanvas) {
     });
   } catch (err) {
     throw new Error(
-      "카메라를 사용할 수 없습니다. 카메라 권한을 허용하고 localhost 또는 https 환경에서 실행하세요. (" +
-        (err && err.message ? err.message : err) +
-        ")"
+      t("err_camera") + " (" + (err && err.message ? err.message : err) + ")"
     );
   }
 
@@ -139,9 +138,7 @@ export async function createHandTracker(videoEl, overlayCanvas) {
     // Clean up the camera we already opened before bailing.
     for (const track of stream.getTracks()) track.stop();
     throw new Error(
-      "손 인식 모델을 불러오지 못했습니다. 인터넷 연결을 확인하세요. (" +
-        (err && err.message ? err.message : err) +
-        ")"
+      t("err_model_load") + " (" + (err && err.message ? err.message : err) + ")"
     );
   }
 

@@ -10,6 +10,15 @@
 import { createHandTracker } from './hand-tracking.js';
 import { RacingGame3D as RacingGame, VEHICLES, MAPS } from './game3d.js';
 import { applyIcons } from './icons.js';
+import { t, initLang, setLang, getLang, applyI18n } from './i18n.js';
+
+// vehicle/map/time display names by id → i18n key (SUV keeps its Latin name)
+const VEH_KEY = { sports: 'veh_sports', super: 'veh_super', classic: 'veh_classic' };
+const MAP_KEY = { newyork: 'map_newyork', paris: 'map_paris', tokyo: 'map_tokyo', seoul: 'map_seoul', neon: 'map_neon' };
+const TIME_KEY = { newyork: 'time_day', paris: 'time_sunset', tokyo: 'time_night', seoul: 'time_evening', neon: 'time_midnight' };
+const vehName = (v) => (VEH_KEY[v.id] ? t(VEH_KEY[v.id]) : v.name);
+const mapName = (m) => (MAP_KEY[m.id] ? t(MAP_KEY[m.id]) : m.name);
+const timeName = (m) => (TIME_KEY[m.id] ? t(TIME_KEY[m.id]) : m.time);
 import {
   getProfile, ensureProfile, addRun, submitBest,
   getLocalBest, getHistory, fetchTop, fetchMyRank, remoteEnabled,
@@ -87,8 +96,8 @@ function buildVehicleGrid() {
   if (!grid) return;
   grid.innerHTML = VEHICLES.map((v) =>
     '<button class="pickcard' + (v.id === selectedVehicle ? ' is-selected' : '') + '" data-veh="' + v.id + '">' +
-    '<span class="pickcard__name">' + v.name + '</span>' +
-    '<div class="pickcard__stats">' + statRow('속도', v.speed) + statRow('가속', v.accel) + statRow('조향', v.handling) + '</div>' +
+    '<span class="pickcard__name">' + vehName(v) + '</span>' +
+    '<div class="pickcard__stats">' + statRow(t('stat_speed'), v.speed) + statRow(t('stat_accel'), v.accel) + statRow(t('stat_handling'), v.handling) + '</div>' +
     '</button>'
   ).join('');
   grid.onclick = (e) => {
@@ -102,8 +111,8 @@ function buildMapGrid() {
   if (!grid) return;
   grid.innerHTML = MAPS.map((m) =>
     '<button class="pickcard pickcard--map' + (m.id === selectedMap ? ' is-selected' : '') + '" data-map="' + m.id + '">' +
-    '<span class="pickcard__name">' + m.name + '</span>' +
-    '<span class="pickcard__badge">' + m.time + '</span>' +
+    '<span class="pickcard__name">' + mapName(m) + '</span>' +
+    '<span class="pickcard__badge">' + timeName(m) + '</span>' +
     '</button>'
   ).join('');
   grid.onclick = (e) => {
@@ -129,9 +138,25 @@ document.addEventListener('click', (e) => {
   const nx = e.target.closest('[data-next]'); if (nx) { showStep(+nx.dataset.next); return; }
   const bk = e.target.closest('[data-back]'); if (bk) { showStep(+bk.dataset.back); }
 });
+initLang();            // detect/restore language before first paint
 applyIcons();          // swap all <span data-ico> placeholders for line-icon SVGs
+applyI18n();           // translate static markup
 buildVehicleGrid();
 buildMapGrid();
+
+// ---- language toggle (lobby + settings) -----------------------------------
+function refreshLangUI() {
+  applyI18n();
+  buildVehicleGrid();
+  buildMapGrid();
+  for (const b of document.querySelectorAll('.lang-btn')) b.classList.toggle('is-active', b.dataset.lang === getLang());
+  if (typeof refreshProfileName === 'function') refreshProfileName();
+  if (game) game._lastLivesStr = game._lastScoreStr = game._lastSpeedStr = ''; // relocalize HUD next frame
+}
+for (const b of document.querySelectorAll('.lang-btn')) {
+  b.addEventListener('click', () => { setLang(b.dataset.lang); refreshLangUI(); });
+  b.classList.toggle('is-active', b.dataset.lang === getLang()); // initial active state
+}
 
 // enter the setup wizard from the lobby
 const playBtn = document.getElementById('play-btn');
@@ -152,7 +177,7 @@ function setStatus(text, kind) {
 function ensureTracker() {
   if (tracker) return Promise.resolve(tracker);
   if (trackerPromise) return trackerPromise;
-  setStatus('카메라 준비 중... 권한을 허용해 주세요');
+  setStatus(t('status_camera_prep'));
   trackerPromise = createHandTracker(cam, camOverlay)
     .then((t) => {
       tracker = t;
@@ -163,8 +188,7 @@ function ensureTracker() {
     .catch((err) => {
       trackerPromise = null; // allow another attempt
       setStatus(
-        (err && err.message ? err.message : '카메라를 시작하지 못했습니다.') +
-          ' — 카메라 권한을 허용하고 localhost 또는 https 에서 실행하세요.',
+        (err && err.message ? err.message : t('err_camera_default')) + t('err_camera_suffix'),
         'is-error'
       );
       return null;
@@ -240,13 +264,13 @@ const profileChip = document.getElementById('profile-chip');
 const profileName = document.getElementById('profile-name');
 function refreshProfileName() {
   const p = getProfile();
-  if (profileName) profileName.textContent = p ? p.nickname : '플레이어';
+  if (profileName) profileName.textContent = p ? p.nickname : t('default_nickname');
 }
 function showNick(editing) {
   const p = getProfile();
-  if (nickTitle) nickTitle.textContent = editing ? '닉네임 변경' : '환영합니다 👋';
-  if (nickSub) nickSub.textContent = editing ? '새 닉네임을 입력하세요' : '랭킹에 표시될 닉네임을 정해주세요';
-  if (nickOk) nickOk.textContent = editing ? '저장' : '시작';
+  if (nickTitle) nickTitle.textContent = editing ? t('nick_edit_title') : t('nick_welcome');
+  if (nickSub) nickSub.textContent = editing ? t('nick_edit_prompt') : t('nick_prompt');
+  if (nickOk) nickOk.textContent = editing ? t('btn_save') : t('btn_nick_start');
   if (nickInput) nickInput.value = p ? p.nickname : '';
   goto('nick');
   if (nickInput) setTimeout(() => nickInput.focus(), 0);
@@ -305,22 +329,22 @@ async function renderRank(diff) {
     ? hist.map((r) => '<li' + (r.distance === myBest ? ' class="is-me"' : '') + '><span>·</span><b>' +
         new Date(r.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) +
         '</b><em>' + r.distance + ' m</em></li>').join('')
-    : '<li class="rank__empty">이 난이도 기록이 없어요</li>';
+    : '<li class="rank__empty">' + t('rank_my_empty') + '</li>';
 
   // 전체 랭킹 (원격)
   if (remoteEnabled()) {
-    globalEl.innerHTML = '<li class="rank__loading">불러오는 중...</li>';
+    globalEl.innerHTML = '<li class="rank__loading">' + t('rank_loading') + '</li>';
     myrankEl.textContent = '';
     const rows = await fetchTop(diff, 100);
     if (rankDiff !== diff) return; // 로딩 중 탭이 바뀜
     globalEl.innerHTML = rows.length
       ? rows.map((r, i) => '<li' + (me && r.player_id === me.playerId ? ' class="is-me"' : '') + '><span>' +
           (i + 1) + '</span><b>' + escapeHtml(r.nickname) + '</b><em>' + r.distance + ' m</em></li>').join('')
-      : '<li class="rank__empty">아직 기록이 없어요</li>';
+      : '<li class="rank__empty">' + t('rank_global_empty') + '</li>';
     const myRank = await fetchMyRank(diff, myBest);
-    if (rankDiff === diff) myrankEl.textContent = myRank ? ('내 순위: ' + myRank + '위 · 최고 ' + myBest + ' m') : '';
+    if (rankDiff === diff) myrankEl.textContent = myRank ? t('rank_my_rank', { n: myRank, best: myBest }) : '';
   } else {
-    globalEl.innerHTML = '<li class="rank__empty">전체 랭킹은 서버 연결 후 표시돼요</li>';
+    globalEl.innerHTML = '<li class="rank__empty">' + t('rank_offline') + '</li>';
     myrankEl.textContent = '';
   }
 }
@@ -379,7 +403,7 @@ function uiLoop() {
   // bottom-centre positioning transform intact.
   if (wheel) wheel.style.transform = 'translateX(-50%) rotate(' + (-tracker.tiltDeg).toFixed(1) + 'deg)';
 
-  if (!tracker.detected) setStatus('양손을 화면에 보여주세요', 'is-warn');
+  if (!tracker.detected) setStatus(t('status_show_hands'), 'is-warn');
   else setStatus('');
 }
 requestAnimationFrame(uiLoop);

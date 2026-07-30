@@ -3,6 +3,7 @@
 //   원격(Supabase): 사람×난이도당 최고 거리 1줄 → 전체 랭킹.
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { t } from './i18n.js';
 
 export const DIFFS = ['easy', 'medium', 'hard'];
 const PROFILE_KEY = 'mr-profile';
@@ -22,7 +23,8 @@ export function getProfile() { return read(PROFILE_KEY, null); }
 export function ensureProfile(nickname) {
   const cur = getProfile();
   const playerId = cur?.playerId || crypto.randomUUID();
-  const nick = (nickname || cur?.nickname || '플레이어').trim().slice(0, 12) || '플레이어';
+  const fallback = t('default_nickname');
+  const nick = (nickname || cur?.nickname || fallback).trim().slice(0, 12) || fallback;
   const prof = { playerId, nickname: nick };
   write(PROFILE_KEY, prof);
   return prof;
