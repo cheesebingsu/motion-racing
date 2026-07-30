@@ -4,6 +4,7 @@
 // .start(opts), .stop(). Reads tracker.steering / tracker.detected / tracker.calibrate.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // ---- world tunables (metres) ----------------------------------------------
 const VIEW_W = 960, VIEW_H = 540;
@@ -145,6 +146,48 @@ function loadTex(url) {
 }
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
+// Soft radial "contact shadow" blob placed under a car (grounds it on the road).
+let _blobTex = null;
+function blobShadowTex() {
+  if (_blobTex) return _blobTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 3, 64, 64, 62);
+  grad.addColorStop(0, 'rgba(0,0,0,0.6)');
+  grad.addColorStop(0.55, 'rgba(0,0,0,0.28)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+  _blobTex = new THREE.CanvasTexture(c);
+  return _blobTex;
+}
+
+// Build a tangent-space normal map from a grayscale height canvas (Sobel).
+function normalFromHeight(heightCanvas, strength) {
+  const w = heightCanvas.width, h = heightCanvas.height;
+  const src = heightCanvas.getContext('2d').getImageData(0, 0, w, h).data;
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const octx = out.getContext('2d');
+  const img = octx.createImageData(w, h);
+  const d = img.data;
+  const H = (x, y) => src[(((y + h) % h) * w + ((x + w) % w)) * 4] / 255;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const dx = (H(x - 1, y) - H(x + 1, y)) * strength;
+      const dy = (H(x, y - 1) - H(x, y + 1)) * strength;
+      const len = Math.hypot(dx, dy, 1);
+      const i = (y * w + x) * 4;
+      d[i] = (dx / len * 0.5 + 0.5) * 255;
+      d[i + 1] = (dy / len * 0.5 + 0.5) * 255;
+      d[i + 2] = (1 / len * 0.5 + 0.5) * 255;
+      d[i + 3] = 255;
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(out);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
 export class RacingGame3D {
   constructor(canvas, tracker) {
     this.canvas = canvas;
@@ -169,6 +212,12 @@ export class RacingGame3D {
 
     const scene = new THREE.Scene();
     this.scene = scene;
+
+    // Neutral studio environment → realistic reflections on car paint & glass.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    this.envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environment = this.envMap;
+    pmrem.dispose();
 
     this.maxAniso = renderer.capabilities.getMaxAnisotropy();
     const camera = new THREE.PerspectiveCamera(58, VIEW_W / VIEW_H, 0.6, 600);
@@ -212,7 +261,7 @@ export class RacingGame3D {
     for (const o of this.mapObjs) {
       this.scene.remove(o);
       if (o.geometry) o.geometry.dispose();
-      if (o.material) { const mm = Array.isArray(o.material) ? o.material : [o.material]; for (const m of mm) { if (m.map) m.map.dispose(); m.dispose(); } }
+      if (o.material) { const mm = Array.isArray(o.material) ? o.material : [o.material]; for (const m of mm) { if (m.map) m.map.dispose(); if (m.normalMap) m.normalMap.dispose(); m.dispose(); } }
     }
     this.mapObjs = [];
 
@@ -277,8 +326,28 @@ export class RacingGame3D {
       car.position.y -= box2.min.y;
       car.rotation.y = -Math.PI / 2; // rear faces the chase camera
       car.visible = this.view !== '1st'; // hide own body in cockpit view
+      // stronger environment reflections on paint/glass → looks like a real car
+      car.traverse((o) => {
+        if (o.isMesh && o.material) {
+          const mm = Array.isArray(o.material) ? o.material : [o.material];
+          for (const m of mm) { if ('envMapIntensity' in m) { m.envMapIntensity = 1.35; m.needsUpdate = true; } }
+        }
+      });
       this.carModel = car;
       this.carGroup.add(car);
+
+      // contact shadow sized to the car's footprint
+      const fp = new THREE.Box3().setFromObject(car).getSize(new THREE.Vector3());
+      if (this.carShadow) { this.carGroup.remove(this.carShadow); this.carShadow.geometry.dispose(); }
+      const sh = new THREE.Mesh(
+        new THREE.PlaneGeometry(fp.x * 1.45, fp.z * 1.7),
+        new THREE.MeshBasicMaterial({ map: blobShadowTex(), transparent: true, depthWrite: false, opacity: 0.65 })
+      );
+      sh.rotation.x = -Math.PI / 2;
+      sh.position.set(0, 0.02, 0);
+      sh.visible = car.visible;
+      this.carShadow = sh;
+      this.carGroup.add(sh);
     });
   }
 
@@ -319,25 +388,85 @@ export class RacingGame3D {
   }
 
   _buildRoad(rc) {
-    // asphalt + lane markings via a canvas texture, tiled down the road
-    const c = document.createElement('canvas'); c.width = 256; c.height = 512;
-    const g = c.getContext('2d');
-    g.fillStyle = rc.base; g.fillRect(0, 0, 256, 512);
-    for (let i = 0; i < 500; i++) { g.fillStyle = 'rgba(255,255,255,' + (Math.random() * 0.03) + ')'; g.fillRect(Math.random() * 256, Math.random() * 512, 2, 2); }
-    g.fillStyle = rc.edge; g.fillRect(10, 0, 6, 512); g.fillRect(240, 0, 6, 512);
-    g.fillStyle = rc.center;
-    for (let y = 0; y < 512; y += 90) g.fillRect(125, y, 6, 50);
-    g.fillStyle = rc.divider;
-    for (let y = 30; y < 512; y += 90) { g.fillRect(66, y, 4, 46); g.fillRect(186, y, 4, 46); }
-    const tex = new THREE.CanvasTexture(c);
+    // Realistic asphalt: high-res albedo (aggregate grains + tonal blotches +
+    // cracks) + a matching height canvas → normal map, so light/headlights catch
+    // the surface relief. Lane markings painted on the albedo (weathered).
+    const W = 512, HH = 1024;
+    const col = document.createElement('canvas'); col.width = W; col.height = HH;
+    const cg = col.getContext('2d');
+    const hgt = document.createElement('canvas'); hgt.width = W; hgt.height = HH;
+    const hg = hgt.getContext('2d');
+
+    cg.fillStyle = rc.base; cg.fillRect(0, 0, W, HH);
+    hg.fillStyle = '#808080'; hg.fillRect(0, 0, W, HH);
+
+    // large soft tonal blotches (patchy wear) — albedo only
+    for (let i = 0; i < 70; i++) {
+      const x = Math.random() * W, y = Math.random() * HH, r = 40 + Math.random() * 130;
+      const a = Math.random() * 0.05;
+      cg.fillStyle = (Math.random() < 0.5 ? 'rgba(255,255,255,' : 'rgba(0,0,0,') + a + ')';
+      cg.beginPath(); cg.arc(x, y, r, 0, 7); cg.fill();
+    }
+    // aggregate grains (albedo speck + matching height bump)
+    for (let i = 0; i < 11000; i++) {
+      const x = Math.random() * W, y = Math.random() * HH, s = 0.6 + Math.random() * 1.9;
+      const dark = Math.random() < 0.5;
+      const lum = dark ? 55 + Math.random() * 40 : 150 + Math.random() * 75;
+      cg.fillStyle = 'rgba(' + lum + ',' + lum + ',' + lum + ',' + (0.10 + Math.random() * 0.18) + ')';
+      cg.fillRect(x, y, s, s);
+      const hv = dark ? 95 + Math.random() * 25 : 150 + Math.random() * 85;
+      hg.fillStyle = 'rgba(' + hv + ',' + hv + ',' + hv + ',0.55)';
+      hg.fillRect(x, y, s, s);
+    }
+    // subtle cracks (albedo dark line + height dip)
+    for (let i = 0; i < 16; i++) {
+      let x = Math.random() * W, y = Math.random() * HH;
+      const lw = 0.8 + Math.random();
+      cg.strokeStyle = 'rgba(0,0,0,0.28)'; cg.lineWidth = lw;
+      hg.strokeStyle = 'rgba(45,45,45,0.6)'; hg.lineWidth = lw;
+      cg.beginPath(); hg.beginPath(); cg.moveTo(x, y); hg.moveTo(x, y);
+      const seg = 6 + Math.floor(Math.random() * 6);
+      for (let s = 0; s < seg; s++) { x += (Math.random() - 0.5) * 44; y += Math.random() * 60; cg.lineTo(x, y); hg.lineTo(x, y); }
+      cg.stroke(); hg.stroke();
+    }
+    // lane markings (albedo only), weathered — positions scaled ×2 from the old 256px layout
+    const mark = (x, w, color, dashLen, gap) => {
+      cg.fillStyle = color;
+      if (!dashLen) { cg.fillRect(x, 0, w, HH); return; }
+      for (let y = 0; y < HH; y += dashLen + gap) cg.fillRect(x, y, w, dashLen);
+    };
+    mark(20, 12, rc.edge, 0, 0); mark(480, 12, rc.edge, 0, 0);   // edge lines
+    mark(250, 12, rc.center, 100, 80);                            // centre dashes
+    mark(132, 8, rc.divider, 92, 88); mark(372, 8, rc.divider, 92, 88); // lane dividers
+    // wear specks over the markings
+    for (let i = 0; i < 1600; i++) {
+      cg.fillStyle = 'rgba(0,0,0,' + (Math.random() * 0.25) + ')';
+      cg.fillRect(Math.random() * W, Math.random() * HH, 1.4, 1.4);
+    }
+
+    const tex = new THREE.CanvasTexture(col);
+    tex.colorSpace = THREE.SRGBColorSpace;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(1, 26);
     tex.anisotropy = this.maxAniso;
     this.roadTex = tex;
 
+    const nrm = normalFromHeight(hgt, 2.2);
+    nrm.repeat.set(1, 26);
+    nrm.anisotropy = this.maxAniso;
+    this.roadNrm = nrm;
+
+    const wet = !this.buildingDay; // night city maps read as damp/wet asphalt
     const road = new THREE.Mesh(
       new THREE.PlaneGeometry(ROAD_HALF * 2, 520),
-      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, metalness: 0.1 })
+      new THREE.MeshStandardMaterial({
+        map: tex,
+        normalMap: nrm,
+        normalScale: new THREE.Vector2(0.7, 0.7),
+        roughness: wet ? 0.55 : 0.9,
+        metalness: wet ? 0.35 : 0.0,
+        envMapIntensity: wet ? 0.85 : 0.35,
+      })
     );
     road.rotation.x = -Math.PI / 2;
     road.position.set(0, 0, -230);
@@ -611,6 +740,7 @@ export class RacingGame3D {
 
     const worldMove = this.speed * WZ * dt;
     this.roadTex.offset.y -= worldMove / 20;
+    if (this.roadNrm) this.roadNrm.offset.y = this.roadTex.offset.y;
 
     // buildings scroll toward camera; fill on first frame, then top up at fixed
     // spacing so they never overlap (no z-fighting flicker)
@@ -736,6 +866,7 @@ export class RacingGame3D {
       const blinkOff = this.invuln > 0 && Math.floor(this.invuln * 12) % 2 === 0;
       this.carModel.visible = this.view !== '1st' && !blinkOff;
     }
+    if (this.carShadow) this.carShadow.visible = this.view !== '1st';
     this.renderer.render(this.scene, this.camera);
   }
 }
